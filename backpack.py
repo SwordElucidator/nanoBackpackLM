@@ -12,7 +12,7 @@ class SenseVectorLayer(nn.Module):
         super().__init__()
         self.C = C
 
-    def forward(self, x):  # n, d  => n, d, k
+    def forward(self, x):
         return self.C(x)  # n, d, k
 
 
@@ -21,20 +21,22 @@ class ContextualizationLayer(nn.Module):
         super().__init__()
         self.A = A
 
-    def __sum_test(self, x, C_x):  # for debug
-        alpha = self.A(x)  # (k, n, n)
-        o = np.zeros((C_x.shape[0], C_x.shape[1]))  # (n, d)
-        for i in range(C_x.shape[0]):   # n
-            for j in range(C_x.shape[0]):  # n
-                for l in range(alpha.shape[0]):  # k
-                    o[i] += alpha[l, i, j] * C_x[j, :, l]  # (, d)
+    def __sum_test(self, x, C_x):  # for debug    batch, n, d, k
+        alpha = self.A(x)  # (batch, k, n, n)
+        o = torch.zeros((C_x.shape[0], C_x.shape[1], C_x.shape[2]))  # (batch, n, d)
+        for i in range(C_x.shape[1]):   # n
+            for j in range(C_x.shape[1]):  # n
+                for l in range(alpha.shape[1]):  # k
+                    for b in range(alpha.shape[0]):
+                        o[b, i] += alpha[b, l, i, j] * C_x[b, j, :, l]  # d
         return o  # (n, d)
 
     def forward(self, x, C_x):
         alpha = self.A(x)  # (k, n, n)  for k sense vectors (weights) of nxn matrix
-        o = torch.sum(torch.matmul(alpha, C_x.permute(2, 0, 1)), dim=0)  # (n, d)   from  (k, n, n)   (n, d, k)
-        assert self.__sum_test(x, C_x) == o
-        return o  # (n, d)
+        o = torch.sum(torch.matmul(alpha, C_x.permute(0, 3, 1, 2)), dim=1)  # (n, d)   from  (k, n, n)   (n, d, k)
+        debug_m = self.__sum_test(x, C_x)
+        print(debug_m == o)  # TODO bug
+        return o  # (batch, n, d)
 
 
 class Transformer(nn.Module):
@@ -92,24 +94,23 @@ class BackpackLM(nn.Module):
         self.config = config
         self.transformer = Transformer(config)
         self.FF = nn.Linear(config.n_embd, config.n_embd * self.config.n_sense_vector)
-        # Ex in (n,d)   E: d, vocab    x: vocab, 1
-        # ff: (n, d) => ()
-        self.C = lambda x: self.FF(self.transformer.wte(x)).reshape(*x.shape, config.n_embd, config.n_sense_vector)
-        # k, d*d/k
-        self.K = nn.Parameter(torch.zeros((config.n_sense_vector, config.n_embd * config.n_embd // config.n_sense_vector)))
-        self.Q = nn.Parameter(torch.zeros((config.n_sense_vector, config.n_embd * config.n_embd // config.n_sense_vector)))
-        def contextualization_weight_func(x):
-            h = self.transformer(x)  # TODO   (batch, n, d)    (d,n) (n, d*d/k) (d*d/k, n) (n,d)
-            # K: k, d*d/k    Q: k, d*d/k
-            import pdb
-            pdb.set_trace()
-            h.permute(0, 2, 1) @ self.K @ self.Q
-            return torch.softmax(self.Q(self.K(h.permute(0, 2, 1))) @ h, dim=-1)
+        self.c_attn = nn.Linear(config.n_embd, 2 * config.n_embd, bias=False)
 
-        self.A = contextualization_weight_func
+        def sense_func(x):  # n, d  => n, d, k
+            return self.FF(self.transformer.wte(x)).reshape(*x.shape, config.n_embd, config.n_sense_vector)
+
+        def contextualization_weight_func(x):
+            h = self.transformer(x)  # (batch, n, d)
+            batch_size, seq_len, emb_dim = h.shape
+            q, k = self.c_attn(h).split(self.config.n_embd, dim=2)
+            k = k.view(batch_size, seq_len, config.n_sense_vector, emb_dim // config.n_sense_vector).transpose(1, 2)
+            q = q.view(batch_size, seq_len, config.n_sense_vector, emb_dim // config.n_sense_vector).transpose(1, 2)
+            att = (q @ k.transpose(-2, -1))
+            return torch.softmax(att, dim=-1)
+
         # o: (d, n)    oj:  (d, 1)
         self.backpack = Backpack(
-            self.C, self.A,
+            sense_func, contextualization_weight_func,
             lambda o: o @ self.transformer.wte.weight.T,  # (vocab, d)   o: (n, d)
         )
 
@@ -123,5 +124,5 @@ if __name__ == '__main__':
     lm = BackpackLM(BackpackLMConfig(
         block_size=11, vocab_size=10, n_layer=6, n_head=3, n_embd=21, n_sense_vector=7
     ))
-    x = torch.zeros((16, 5), dtype=torch.int)
+    x = torch.zeros((16, 8), dtype=torch.int)
     lm(x)

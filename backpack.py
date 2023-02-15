@@ -2,9 +2,12 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
-import numpy as np
+from torch.nn import functional as F
 
 from model import Block, LayerNorm
+
+
+DEBUGGING = True
 
 
 class SenseVectorLayer(nn.Module):
@@ -34,7 +37,7 @@ class ContextualizationLayer(nn.Module):
         alpha = self.A(x)  # (k, n, n)  for k sense vectors (weights) of nxn matrix
         o = torch.sum(torch.matmul(alpha, C_x.permute(0, 3, 1, 2)), dim=1)  # (n, d)   from  (k, n, n)   (n, d, k)
         debug_m = self.__sum_test(alpha, C_x)
-        if not bool(torch.all(torch.abs(debug_m.data - o.data) < 1e-5).numpy()):
+        if DEBUGGING and not bool(torch.all(torch.abs(debug_m.data - o.data) < 1e-5).numpy()):
             raise ValueError
         return o  # (batch, n, d)
 
@@ -83,7 +86,7 @@ class Backpack(nn.Module):
     def forward(self, x):
         C_x = self.sense_vector_layer(x)  # batch, n, d, k
         o = self.contextualization_layer(x, C_x)  # (batch, n, d)
-        return torch.softmax(self.E(o), dim=-1)  # batch, n, vocab
+        return self.E(o)  # no softmax
 
 
 class BackpackLM(nn.Module):
@@ -93,6 +96,9 @@ class BackpackLM(nn.Module):
         assert config.block_size is not None
         self.config = config
         self.transformer = Transformer(config)
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.transformer.wte.weight = self.lm_head.weight  # https://paperswithcode.com/method/weight-tying
+
         self.FF = nn.Linear(config.n_embd, config.n_embd * self.config.n_sense_vector)
         self.c_attn = nn.Linear(config.n_embd, 2 * config.n_embd, bias=False)
 
@@ -108,14 +114,18 @@ class BackpackLM(nn.Module):
             att = (q @ k.transpose(-2, -1))
             return torch.softmax(att, dim=-1)
 
-        # o: (d, n)    oj:  (d, 1)
-        self.backpack = Backpack(
-            sense_func, contextualization_weight_func,
-            lambda o: o @ self.transformer.wte.weight.T,  # (vocab, d)   o: (n, d)
-        )
+        def logit_func(o):
+            return self.lm_head(o)
 
-    def forward(self, idx):
-        return self.backpack(idx)
+        # o: (d, n)    oj:  (d, 1)
+        self.backpack = Backpack(sense_func, contextualization_weight_func, logit_func)
+
+    def forward(self, idx, targets=None):
+        logits = self.backpack(idx)
+        loss = None
+        if targets is not None:
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+        return logits, loss
 
 
 # vocab: 10   d: 3     n: 5     batch: 16  k: 7
@@ -124,7 +134,8 @@ if __name__ == '__main__':
     lm = BackpackLM(BackpackLMConfig(
         block_size=11, vocab_size=10, n_layer=6, n_head=3, n_embd=21, n_sense_vector=7
     ))
-    x = torch.zeros((16, 8), dtype=torch.int)
-    rst = lm(x)
-    print(rst)
-    print(rst.shape)
+    x = torch.zeros((1, 8), dtype=torch.int)
+    logits, loss = lm(x, torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0]]))
+    print(F.softmax(logits, dim=-1))
+    print(logits.shape)
+    print(f'loss: {loss}')

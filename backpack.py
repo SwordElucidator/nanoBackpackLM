@@ -21,21 +21,21 @@ class ContextualizationLayer(nn.Module):
         super().__init__()
         self.A = A
 
-    def __sum_test(self, x, C_x):  # for debug    batch, n, d, k
-        alpha = self.A(x)  # (batch, k, n, n)
+    def __sum_test(self, alpha, C_x):  # for debug    batch, n, d, k
         o = torch.zeros((C_x.shape[0], C_x.shape[1], C_x.shape[2]))  # (batch, n, d)
         for i in range(C_x.shape[1]):   # n
             for j in range(C_x.shape[1]):  # n
                 for l in range(alpha.shape[1]):  # k
                     for b in range(alpha.shape[0]):
-                        o[b, i] += alpha[b, l, i, j] * C_x[b, j, :, l]  # d
-        return o  # (n, d)
+                        o[b, i, :] += alpha[b, l, i, j] * C_x[b, j, :, l]
+        return o  # (batch, n, d)
 
     def forward(self, x, C_x):
         alpha = self.A(x)  # (k, n, n)  for k sense vectors (weights) of nxn matrix
         o = torch.sum(torch.matmul(alpha, C_x.permute(0, 3, 1, 2)), dim=1)  # (n, d)   from  (k, n, n)   (n, d, k)
-        debug_m = self.__sum_test(x, C_x)
-        print(debug_m == o)  # TODO bug
+        debug_m = self.__sum_test(alpha, C_x)
+        if not bool(torch.all(torch.abs(debug_m.data - o.data) < 1e-5).numpy()):
+            raise ValueError
         return o  # (batch, n, d)
 
 
@@ -81,9 +81,9 @@ class Backpack(nn.Module):
         self.contextualization_layer = ContextualizationLayer(A)
 
     def forward(self, x):
-        C_x = self.sense_vector_layer(x)  # n, d, k
-        o = self.contextualization_layer(x, C_x)  # (n, d)
-        return torch.softmax(self.E(o), dim=-1)
+        C_x = self.sense_vector_layer(x)  # batch, n, d, k
+        o = self.contextualization_layer(x, C_x)  # (batch, n, d)
+        return torch.softmax(self.E(o), dim=-1)  # batch, n, vocab
 
 
 class BackpackLM(nn.Module):
@@ -125,4 +125,6 @@ if __name__ == '__main__':
         block_size=11, vocab_size=10, n_layer=6, n_head=3, n_embd=21, n_sense_vector=7
     ))
     x = torch.zeros((16, 8), dtype=torch.int)
-    lm(x)
+    rst = lm(x)
+    print(rst)
+    print(rst.shape)

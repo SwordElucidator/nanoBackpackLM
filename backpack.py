@@ -7,8 +7,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from model import Block, LayerNorm
-
+from model import Block, LayerNorm, new_gelu
 
 DEBUGGING = True
 
@@ -109,16 +108,40 @@ class Transformer(nn.Module):
         return x
 
 
+class BackpackFF(nn.Module):
+
+    def __init__(self, from_dim, to_dim, dropout, bias):
+        super().__init__()
+        self.c_fc = nn.Linear(from_dim, 4 * from_dim, bias=bias)
+        self.c_proj = nn.Linear(4 * from_dim, to_dim, bias=bias)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        x = self.c_fc(x)
+        x = new_gelu(x)
+        x = self.c_proj(x)
+        x = self.dropout(x)
+        return x
+
+
 class LMSenseVectorLayer(SenseVectorLayer):
 
-    def __init__(self, wte, *, n_embd, n_sense_vector):
+    def __init__(self, wte, config: BackpackLMConfig):
         super().__init__()
         self.wte = wte
-        self.n_embd, self.n_sense_vector = n_embd, n_sense_vector
-        self.FF = nn.Linear(n_embd, n_embd * n_sense_vector)
+        self.n_embd, self.n_sense_vector = config.n_embd, config.n_sense_vector
+        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ff_1 = BackpackFF(config.n_embd, config.n_embd, config.dropout, config.bias)
+        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ff_2 = BackpackFF(config.n_embd, config.n_embd * config.n_sense_vector, config.dropout, config.bias)
 
     def sense_func(self, x):
-        return self.FF(self.wte(x)).reshape(*x.shape, self.n_embd, self.n_sense_vector)
+        x = self.wte(x)
+        x = x + self.ff_1(self.ln_1(x))  # TODO before or after?
+        # TODO addtional res-net here?
+        # x = x.unsqueeze(dim=-1) + self.ff_2(self.ln_2(x)).reshape(*x.shape, self.n_sense_vector)  # put res net to all k sense vectors of the result
+        x = self.ff_2(self.ln_2(x)).reshape(*x.shape, self.n_sense_vector)
+        return x
 
 
 class LMContextualizationLayer(ContextualizationLayer):
@@ -141,9 +164,9 @@ class LMContextualizationLayer(ContextualizationLayer):
 
 
 class LMLogitLayer(LogitLayer):
-    def __init__(self, wte, *, n_embd, vocab_size):
+    def __init__(self, wte, config: BackpackLMConfig):
         super(LMLogitLayer, self).__init__()
-        self.lm_head = nn.Linear(n_embd, vocab_size, bias=False)
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         wte.weight = self.lm_head.weight  # https://paperswithcode.com/method/weight-tying
 
     def logit_func(self, o):
@@ -158,11 +181,10 @@ class BackpackLM(nn.Module):
         self.config = config
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
 
-        # o: (d, n)    oj:  (d, 1)
         self.backpack = Backpack(
-            LMSenseVectorLayer(self.wte, n_embd=config.n_embd, n_sense_vector=config.n_sense_vector),
+            LMSenseVectorLayer(self.wte, config),
             LMContextualizationLayer(self.wte, config),
-            LMLogitLayer(self.wte, n_embd=config.n_embd, vocab_size=config.vocab_size)
+            LMLogitLayer(self.wte, config)
         )
 
         # init all weights
@@ -245,7 +267,6 @@ class BackpackLM(nn.Module):
         return optimizer
 
 
-# vocab: 10   d: 3     n: 5     batch: 16  k: 7
 if __name__ == '__main__':
     # test
     lm = BackpackLM(BackpackLMConfig(

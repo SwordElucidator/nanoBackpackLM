@@ -1,4 +1,6 @@
+import inspect
 import math
+from abc import ABC
 from dataclasses import dataclass
 
 import torch
@@ -11,36 +13,78 @@ from model import Block, LayerNorm
 DEBUGGING = True
 
 
-class SenseVectorLayer(nn.Module):
-    def __init__(self, C):
+# Backpack Prototype
+class SenseVectorLayer(nn.Module, ABC):
+    def __init__(self):
         super().__init__()
-        self.C = C
+
+    def sense_func(self, x):
+        raise NotImplementedError
 
     def forward(self, x):
-        return self.C(x)  # n, d, k
+        return self.sense_func(x)  # (n, d, k)
 
 
-class ContextualizationLayer(nn.Module):
-    def __init__(self, A):
+class ContextualizationLayer(nn.Module, ABC):
+    def __init__(self):
         super().__init__()
-        self.A = A
 
-    def __sum_test(self, alpha, C_x):  # for debug    batch, n, d, k
-        o = torch.zeros((C_x.shape[0], C_x.shape[1], C_x.shape[2]))  # (batch, n, d)
-        for i in range(C_x.shape[1]):   # n
-            for j in range(C_x.shape[1]):  # n
+    def contextualization_weight_func(self, x):
+        raise NotImplementedError
+
+    def __forward_test(self, alpha, sense_x):  # for debug    batch, n, d, k
+        o = torch.zeros((sense_x.shape[0], sense_x.shape[1], sense_x.shape[2]))  # (batch, n, d)
+        for i in range(sense_x.shape[1]):   # n
+            for j in range(sense_x.shape[1]):  # n
                 for l in range(alpha.shape[1]):  # k
                     for b in range(alpha.shape[0]):
-                        o[b, i, :] += alpha[b, l, i, j] * C_x[b, j, :, l]
+                        o[b, i, :] += alpha[b, l, i, j] * sense_x[b, j, :, l]
         return o  # (batch, n, d)
 
-    def forward(self, x, C_x):
-        alpha = self.A(x)  # (k, n, n)  for k sense vectors (weights) of nxn matrix
-        o = torch.sum(torch.matmul(alpha, C_x.permute(0, 3, 1, 2)), dim=1)  # (n, d)   from  (k, n, n)   (n, d, k)
-        debug_m = self.__sum_test(alpha, C_x)
-        if DEBUGGING and not bool(torch.all(torch.abs(debug_m.data - o.data) < 1e-5).numpy()):
-            raise ValueError
+    def forward(self, x, sense_x):
+        alpha = self.contextualization_weight_func(x)  # (k, n, n)  for k sense vectors (weights) of nxn matrix
+        o = torch.sum(torch.matmul(alpha, sense_x.permute(0, 3, 1, 2)), dim=1)  # (n, d)   from  (k, n, n)   (n, d, k)
+        if DEBUGGING:
+            assert bool(torch.all(torch.abs(self.__forward_test(alpha, sense_x).data - o.data) < 1e-5).numpy())
         return o  # (batch, n, d)
+
+
+class LogitLayer(nn.Module, ABC):
+    def __init__(self):
+        super().__init__()
+
+    def logit_func(self, o):
+        raise NotImplementedError
+
+    def forward(self, o):
+        return self.logit_func(o)
+
+
+class Backpack(nn.Module):
+    def __init__(self, sense_vector_layer: SenseVectorLayer,
+                 contextualization_layer: ContextualizationLayer, logit_layer: LogitLayer):
+        super().__init__()
+        self.logit_layer = logit_layer  # (n, d) -> |y|
+        self.sense_vector_layer = sense_vector_layer
+        self.contextualization_layer = contextualization_layer
+
+    def forward(self, x):
+        sense_x = self.sense_vector_layer(x)  # batch, n, d, k
+        o = self.contextualization_layer(x, sense_x)  # (batch, n, d)
+        return self.logit_layer(o)  # no softmax
+
+
+# BackpackLM
+@dataclass
+class BackpackLMConfig:
+    block_size: int = 1024
+    vocab_size: int = 50304  # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
+    n_layer: int = 12
+    n_head: int = 12
+    n_embd: int = 768
+    dropout: float = 0.0
+    bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    n_sense_vector: int = 16
 
 
 class Transformer(nn.Module):
@@ -65,29 +109,45 @@ class Transformer(nn.Module):
         return x
 
 
-@dataclass
-class BackpackLMConfig:
-    block_size: int = 1024
-    vocab_size: int = 50304  # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
-    n_layer: int = 12
-    n_head: int = 12
-    n_embd: int = 768
-    dropout: float = 0.0
-    bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
-    n_sense_vector: int = 16
+class LMSenseVectorLayer(SenseVectorLayer):
 
-
-class Backpack(nn.Module):
-    def __init__(self, C, A, E):
+    def __init__(self, wte, *, n_embd, n_sense_vector):
         super().__init__()
-        self.E = E  # (n, d) -> |y|
-        self.sense_vector_layer = SenseVectorLayer(C)
-        self.contextualization_layer = ContextualizationLayer(A)
+        self.wte = wte
+        self.n_embd, self.n_sense_vector = n_embd, n_sense_vector
+        self.FF = nn.Linear(n_embd, n_embd * n_sense_vector)
 
-    def forward(self, x):
-        C_x = self.sense_vector_layer(x)  # batch, n, d, k
-        o = self.contextualization_layer(x, C_x)  # (batch, n, d)
-        return self.E(o)  # no softmax
+    def sense_func(self, x):
+        return self.FF(self.wte(x)).reshape(*x.shape, self.n_embd, self.n_sense_vector)
+
+
+class LMContextualizationLayer(ContextualizationLayer):
+
+    def __init__(self, wte, config):
+        super().__init__()
+        self.n_sense_vector, self.n_embd = config.n_sense_vector, config.n_embd
+        self.transformer = Transformer(config)
+        self.transformer.wte = wte
+        self.c_attn = nn.Linear(config.n_embd, 2 * config.n_embd, bias=False)
+
+    def contextualization_weight_func(self, x):
+        h = self.transformer(x)  # (batch, n, d)
+        batch_size, seq_len, emb_dim = h.shape
+        q, k = self.c_attn(h).split(self.n_embd, dim=2)
+        k = k.view(batch_size, seq_len, self.n_sense_vector, emb_dim // self.n_sense_vector).transpose(1, 2)
+        q = q.view(batch_size, seq_len, self.n_sense_vector, emb_dim // self.n_sense_vector).transpose(1, 2)
+        att = (q @ k.transpose(-2, -1))
+        return torch.softmax(att, dim=-1)
+
+
+class LMLogitLayer(LogitLayer):
+    def __init__(self, wte, *, n_embd, vocab_size):
+        super(LMLogitLayer, self).__init__()
+        self.lm_head = nn.Linear(n_embd, vocab_size, bias=False)
+        wte.weight = self.lm_head.weight  # https://paperswithcode.com/method/weight-tying
+
+    def logit_func(self, o):
+        return self.lm_head(o)
 
 
 class BackpackLM(nn.Module):
@@ -96,30 +156,14 @@ class BackpackLM(nn.Module):
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.config = config
-        self.transformer = Transformer(config)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.transformer.wte.weight = self.lm_head.weight  # https://paperswithcode.com/method/weight-tying
-
-        self.FF = nn.Linear(config.n_embd, config.n_embd * self.config.n_sense_vector)
-        self.c_attn = nn.Linear(config.n_embd, 2 * config.n_embd, bias=False)
-
-        def sense_func(x):  # n, d  => n, d, k
-            return self.FF(self.transformer.wte(x)).reshape(*x.shape, config.n_embd, config.n_sense_vector)
-
-        def contextualization_weight_func(x):
-            h = self.transformer(x)  # (batch, n, d)
-            batch_size, seq_len, emb_dim = h.shape
-            q, k = self.c_attn(h).split(self.config.n_embd, dim=2)
-            k = k.view(batch_size, seq_len, config.n_sense_vector, emb_dim // config.n_sense_vector).transpose(1, 2)
-            q = q.view(batch_size, seq_len, config.n_sense_vector, emb_dim // config.n_sense_vector).transpose(1, 2)
-            att = (q @ k.transpose(-2, -1))
-            return torch.softmax(att, dim=-1)
-
-        def logit_func(o):
-            return self.lm_head(o)
+        self.wte = nn.Embedding(config.vocab_size, config.n_embd)
 
         # o: (d, n)    oj:  (d, 1)
-        self.backpack = Backpack(sense_func, contextualization_weight_func, logit_func)
+        self.backpack = Backpack(
+            LMSenseVectorLayer(self.wte, n_embd=config.n_embd, n_sense_vector=config.n_sense_vector),
+            LMContextualizationLayer(self.wte, config),
+            LMLogitLayer(self.wte, n_embd=config.n_embd, vocab_size=config.vocab_size)
+        )
 
         # init all weights
         self.apply(self._init_weights)
@@ -134,7 +178,7 @@ class BackpackLM(nn.Module):
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         return logits, loss
 
-    def _init_weights(self, module):
+    def _init_weights(self, module):  # copied from gpt2
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:

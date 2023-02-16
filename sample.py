@@ -6,9 +6,12 @@ import pickle
 from contextlib import nullcontext
 import torch
 import tiktoken
+
+from backpack import BackpackLM, BackpackLMConfig
 from model import GPTConfig, GPT
 
 # -----------------------------------------------------------------------------
+model_name = 'gpt2'
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
 out_dir = 'out' # ignored if init_from is not 'resume'
 start = "\n" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
@@ -31,13 +34,18 @@ device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.aut
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
+
+Model = BackpackLM if model_name == 'backpack-lm' else GPT
+Config = BackpackLMConfig if model_name == 'backpack-lm' else GPTConfig
+
+
 # model
 if init_from == 'resume':
     # init from a model saved in a specific directory
     ckpt_path = os.path.join(out_dir, 'ckpt.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
-    gptconf = GPTConfig(**checkpoint['model_args'])
-    model = GPT(gptconf)
+    gptconf = Config(**checkpoint['model_args'])
+    model = Model(gptconf)
     state_dict = checkpoint['model']
     unwanted_prefix = '_orig_mod.'
     for k,v in list(state_dict.items()):
@@ -46,7 +54,7 @@ if init_from == 'resume':
     model.load_state_dict(state_dict)
 elif init_from.startswith('gpt2'):
     # init from a given GPT-2 model
-    model = GPT.from_pretrained(init_from, dict(dropout=0.0))
+    model = Model.from_pretrained(init_from, dict(dropout=0.0))
 
 model.eval()
 model.to(device)

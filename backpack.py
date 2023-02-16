@@ -152,6 +152,10 @@ class LMContextualizationLayer(ContextualizationLayer):
         self.transformer = Transformer(config)
         self.transformer.wte = wte
         self.c_attn = nn.Linear(config.n_embd, 2 * config.n_embd, bias=False)
+        self.attn_dropout = nn.Dropout(config.dropout)
+        # TODO: faster?
+        self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+                             .view(1, 1, config.block_size, config.block_size))
 
     def contextualization_weight_func(self, x):
         h = self.transformer(x)  # (batch, n, d)
@@ -160,7 +164,9 @@ class LMContextualizationLayer(ContextualizationLayer):
         k = k.view(batch_size, seq_len, self.n_sense_vector, emb_dim // self.n_sense_vector).transpose(1, 2)
         q = q.view(batch_size, seq_len, self.n_sense_vector, emb_dim // self.n_sense_vector).transpose(1, 2)
         att = (q @ k.transpose(-2, -1))
-        return torch.softmax(att, dim=-1)
+        att = att.masked_fill(self.bias[:, :, :seq_len, :seq_len] == 0, float('-inf'))
+        att = F.softmax(att, dim=-1)
+        return self.attn_dropout(att)
 
 
 class LMLogitLayer(LogitLayer):

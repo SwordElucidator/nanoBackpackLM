@@ -50,7 +50,7 @@ gradient_accumulation_steps = 1 # used to simulate larger batch sizes
 batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
 # model
-model_name = 'gpt2'  # another is "backpack-lm"
+model_name = 'backpack-lm'  # another is "gpt2"
 n_layer = 12
 n_head = 12
 n_embd = 768

@@ -330,6 +330,10 @@ class BackpackLM(nn.Module):
 
         return idx
 
+    def sense_vector(self):
+        vocab = torch.arange(0, self.config.vocab_size, dtype=torch.int).unsqueeze(dim=0)
+        return self.backpack.sense_vector_layer(vocab).squeeze().permute(0, 2, 1)
+
 
 if __name__ == '__main__':
     # test

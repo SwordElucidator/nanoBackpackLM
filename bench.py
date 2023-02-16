@@ -6,9 +6,12 @@ from contextlib import nullcontext
 import numpy as np
 import time
 import torch
+
+from backpack import BackpackLMConfig, BackpackLM
 from model import GPTConfig, GPT
 
 # -----------------------------------------------------------------------------
+model_name = 'backpack-lm'
 batch_size = 12
 block_size = 1024
 bias = False
@@ -48,13 +51,13 @@ else:
     get_batch = lambda split: (x, y)
 
 # model init
-gptconf = GPTConfig(
+gptconf = (BackpackLMConfig if model_name == 'backpack-lm' else GPTConfig)(
     block_size = block_size, # how far back does the model look? i.e. context size
     n_layer = 12, n_head = 12, n_embd = 768, # size of the model
     dropout = 0, # for determinism
     bias = bias,
 )
-model = GPT(gptconf)
+model = (BackpackLM if model_name == 'backpack-lm' else GPT)(gptconf)
 model.to(device)
 
 optimizer = model.configure_optimizers(weight_decay=1e-2, learning_rate=1e-4, betas=(0.9, 0.95), device_type=device_type)

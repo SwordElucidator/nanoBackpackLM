@@ -37,7 +37,7 @@ def web_text_generator():
 
 
 def news_generator():
-    path = 'data/clue_small/webtext2019zh'
+    path = 'data/clue_small/new2016zh'
     files = ['news2016zh_train.json', 'news2016zh_valid.json']
     for f_name in files:
         with open(os.path.join(path, f_name), 'r') as f:

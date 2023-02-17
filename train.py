@@ -76,6 +76,7 @@ backend = 'nccl' # 'nccl', 'gloo', etc.
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = True # use PyTorch 2.0 to compile the model to be faster
+is_chinese = False
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
@@ -111,6 +112,8 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 data_dir = os.path.join('data', dataset)
 train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
 val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+
+
 def get_batch(split):
     data = train_data if split == 'train' else val_data
     ix = torch.randint(len(data) - block_size, (batch_size,))
@@ -141,6 +144,7 @@ model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=bloc
                   bias=bias, vocab_size=None, dropout=dropout)  # start with model_args from command line
 Model = BackpackLM if model_name == 'backpack-lm' else GPT
 Config = BackpackLMConfig if model_name == 'backpack-lm' else GPTConfig
+
 if model_name == 'backpack-lm':
     model_args['n_sense_vector'] = n_sense_vector
 
@@ -149,8 +153,11 @@ if init_from == 'scratch':
     print("Initializing a new model from scratch")
     # determine the vocab size we'll use for from-scratch training
     if meta_vocab_size is None:
-        print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
-    model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
+        if is_chinese:
+            print("defaulting to vocab_size of Chinese BERT to 21184 (21128 rounded up for efficiency)")
+        else:
+            print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
+    model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 21184 if is_chinese else 50304
     gptconf = Config(**model_args)
     model = Model(gptconf)
 elif init_from == 'resume':

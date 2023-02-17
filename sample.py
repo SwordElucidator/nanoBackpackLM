@@ -6,6 +6,7 @@ import pickle
 from contextlib import nullcontext
 import torch
 import tiktoken
+from transformers import BertTokenizer
 
 from backpack import BackpackLM, BackpackLMConfig
 from model import GPTConfig, GPT
@@ -23,6 +24,7 @@ seed = 1337
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 dtype = 'bfloat16' # 'float32' or 'bfloat16' or 'float16'
 compile = False # use PyTorch 2.0 to compile the model to be faster
+is_chinese = False  # if chinese, use bert tokenizer
 exec(open('configurator.py').read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
@@ -74,6 +76,11 @@ if load_meta:
     stoi, itos = meta['stoi'], meta['itos']
     encode = lambda s: [stoi[c] for c in s]
     decode = lambda l: ''.join([itos[i] for i in l])
+elif is_chinese:
+    print("Use Chinese GPT encodings...")
+    tokenizer = BertTokenizer.from_pretrained("uer/gpt2-chinese-cluecorpussmall")
+    encode = lambda s: tokenizer.encode(s)
+    decode = lambda l: tokenizer.decode(l)
 else:
     # ok let's assume gpt-2 encodings by default
     print("No meta.pkl found, assuming GPT-2 encodings...")

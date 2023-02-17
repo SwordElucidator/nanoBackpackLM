@@ -22,7 +22,7 @@ class SenseVectorExperiment(object):
 
     def min_sense_cosine(self, x1id, x2id):
         return torch.min(self.cosine_similarity(x1id, x2id))
-    
+
     def min_sense_cosine_matrix(self, k=5):
         sense_dict = [defaultdict(lambda: TopK(k)) for _ in range(self.n_sense_vectors)]
         for i in range(self.vocab_size):

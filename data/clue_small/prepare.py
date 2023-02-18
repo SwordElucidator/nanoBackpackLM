@@ -15,7 +15,7 @@ num_proc = 8
 
 
 def wiki_generator():
-    path = 'data/clue_small/wiki_zh'
+    path = 'data/clue_small/wiki_zh_2019'
     for subdir in os.listdir(os.path.join(path)):
         subdir = os.path.join(path, subdir)
         if os.path.isdir(subdir):

@@ -37,4 +37,9 @@ class SenseVectorExperiment(object):
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
     cos_sim = ex.min_sense_cosine_matrix()
-    print(cos_sim)
+    for i, dic in enumerate(cos_sim):
+        print(f'Sense Vector {i + 1}:')
+        for key, value in dic.items():
+            key = key if key != "\n" else "⏎"
+            mat = " ".join((k if k != "\n" else "⏎") + " " + ("%.4f" % float(v)) for v, k in value.top_k())
+            print(f'\t{key}: {mat}')

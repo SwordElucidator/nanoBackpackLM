@@ -170,6 +170,8 @@ elif init_from == 'resume':
     # the rest of the attributes (e.g. dropout) can stay as desired from command line
     for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
         model_args[k] = checkpoint_model_args[k]
+    if model_name == 'backpack-lm':
+        model_args['n_sense_vector'] = checkpoint_model_args['n_sense_vector']
     # create the model
     gptconf = Config(**model_args)
     model = Model(gptconf)

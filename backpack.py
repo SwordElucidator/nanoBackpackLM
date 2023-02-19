@@ -330,9 +330,19 @@ class BackpackLM(nn.Module):
 
         return idx
 
-    def sense_vector(self):
-        vocab = torch.arange(0, self.config.vocab_size, dtype=torch.int).unsqueeze(dim=0)
-        return self.backpack.sense_vector_layer(vocab).squeeze().permute(0, 2, 1)
+    @torch.no_grad()
+    def sense_vector(self, mini_batch_size=12):
+        # vocab = torch.arange(0, self.config.vocab_size, dtype=torch.int).unsqueeze(dim=0)
+        # s1 = self.backpack.sense_vector_layer(vocab).squeeze().permute(0, 2, 1)
+        single_batch_size = self.config.block_size * mini_batch_size
+        batched_vocab_size = ((self.config.vocab_size + 1) // single_batch_size + 1) * single_batch_size
+        vocab = torch.arange(0, batched_vocab_size, dtype=torch.int).view(-1, mini_batch_size, self.config.block_size)
+        res = torch.zeros((batched_vocab_size, self.config.n_sense_vector, self.config.n_embd))
+        for i, batch_x in enumerate(vocab):
+            print(f'load sense vector on batch {i * single_batch_size} - {i * single_batch_size + single_batch_size - 1}')
+            batch_x[batch_x > self.config.vocab_size - 1] = 0
+            res[i * single_batch_size: i * single_batch_size + single_batch_size] = self.backpack.sense_vector_layer(batch_x).permute(0, 1, 3, 2).view(-1, self.config.n_sense_vector, self.config.n_embd)
+        return res[:self.config.vocab_size]
 
 
 if __name__ == '__main__':

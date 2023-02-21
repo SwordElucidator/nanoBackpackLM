@@ -24,6 +24,6 @@ log_interval = 10
 # weight decay
 weight_decay = 1e-1
 
-out_dir = 'clue'
+out_dir = 'clue_micro'
 dataset = 'clue_small'
 is_chinese = True

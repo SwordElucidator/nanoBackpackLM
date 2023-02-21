@@ -139,8 +139,7 @@ class LMSenseVectorLayer(SenseVectorLayer):
         x = self.wte(x)
         x = x + self.ff_1(self.ln_1(x))  # TODO before or after?
         # TODO addtional res-net here?
-        # x = x.unsqueeze(dim=-1) + self.ff_2(self.ln_2(x)).reshape(*x.shape, self.n_sense_vector)  # put res net to all k sense vectors of the result
-        x = self.ff_2(self.ln_2(x)).reshape(*x.shape, self.n_sense_vector)
+        x = x.unsqueeze(dim=-1) + self.ff_2(self.ln_2(x)).reshape(*x.shape, self.n_sense_vector)
         return x
 
 
@@ -172,11 +171,12 @@ class LMContextualizationLayer(ContextualizationLayer):
 class LMLogitLayer(LogitLayer):
     def __init__(self, wte, config: BackpackLMConfig):
         super(LMLogitLayer, self).__init__()
+        self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         wte.weight = self.lm_head.weight  # https://paperswithcode.com/method/weight-tying
 
     def logit_func(self, o):
-        return self.lm_head(o)
+        return self.lm_head(self.ln_f(o))
 
 
 class BackpackLM(nn.Module):
@@ -204,9 +204,6 @@ class BackpackLM(nn.Module):
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-            if loss < 0.1:
-                import pdb
-                pdb.set_trace()
         return logits, loss
 
     def get_num_params(self, non_embedding=True):

@@ -139,8 +139,7 @@ class LMSenseVectorLayer(SenseVectorLayer):
         x = self.wte(x)
         x = x + self.ff_1(self.ln_1(x))  # TODO before or after?
         # TODO addtional res-net here?
-        # x = x.unsqueeze(dim=-1) + self.ff_2(self.ln_2(x)).reshape(*x.shape, self.n_sense_vector)  # put res net to all k sense vectors of the result
-        x = self.ff_2(self.ln_2(x)).reshape(*x.shape, self.n_sense_vector)
+        x = x.unsqueeze(dim=-1) + self.ff_2(self.ln_2(x)).reshape(*x.shape, self.n_sense_vector)
         return x
 
 
@@ -172,11 +171,12 @@ class LMContextualizationLayer(ContextualizationLayer):
 class LMLogitLayer(LogitLayer):
     def __init__(self, wte, config: BackpackLMConfig):
         super(LMLogitLayer, self).__init__()
+        self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         wte.weight = self.lm_head.weight  # https://paperswithcode.com/method/weight-tying
 
     def logit_func(self, o):
-        return self.lm_head(o)
+        return self.lm_head(self.ln_f(o))
 
 
 class BackpackLM(nn.Module):
@@ -204,9 +204,6 @@ class BackpackLM(nn.Module):
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-            if loss < 0.1:
-                import pdb
-                pdb.set_trace()
         return logits, loss
 
     def get_num_params(self, non_embedding=True):
@@ -330,9 +327,19 @@ class BackpackLM(nn.Module):
 
         return idx
 
-    def sense_vector(self):
-        vocab = torch.arange(0, self.config.vocab_size, dtype=torch.int).unsqueeze(dim=0)
-        return self.backpack.sense_vector_layer(vocab).squeeze().permute(0, 2, 1)
+    @torch.no_grad()
+    def sense_vector(self, mini_batch_size=12):
+        # vocab = torch.arange(0, self.config.vocab_size, dtype=torch.int).unsqueeze(dim=0)
+        # s1 = self.backpack.sense_vector_layer(vocab).squeeze().permute(0, 2, 1)
+        single_batch_size = self.config.block_size * mini_batch_size
+        batched_vocab_size = ((self.config.vocab_size + 1) // single_batch_size + 1) * single_batch_size
+        vocab = torch.arange(0, batched_vocab_size, dtype=torch.int).view(-1, mini_batch_size, self.config.block_size)
+        res = torch.zeros((batched_vocab_size, self.config.n_sense_vector, self.config.n_embd))
+        for i, batch_x in enumerate(vocab):
+            print(f'load sense vector on batch {i * single_batch_size} - {i * single_batch_size + single_batch_size - 1}')
+            batch_x[batch_x > self.config.vocab_size - 1] = 0
+            res[i * single_batch_size: i * single_batch_size + single_batch_size] = self.backpack.sense_vector_layer(batch_x).permute(0, 1, 3, 2).view(-1, self.config.n_sense_vector, self.config.n_embd)
+        return res[:self.config.vocab_size]
 
 
 if __name__ == '__main__':

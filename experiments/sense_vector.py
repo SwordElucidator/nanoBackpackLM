@@ -5,7 +5,7 @@ import pickle
 
 import torch
 
-from experiments.load_model import load_model
+from experiments.load_model import load_model, device
 from experiments.utils import TopK
 
 
@@ -13,7 +13,7 @@ from experiments.utils import TopK
 class SenseVectorExperiment(object):
     def __init__(self):
         self.model, self.encode, self.decode = load_model()
-        self.sense_vector = self.model.sense_vector(mini_batch_size=4)
+        self.sense_vector = self.model.sense_vector(mini_batch_size=4, device=device)
         self.vocab_size = self.sense_vector.shape[0]
         self.n_sense_vectors = self.sense_vector.shape[1]
 
@@ -26,7 +26,7 @@ class SenseVectorExperiment(object):
         return torch.min(self.cosine_similarity(x1id, x2id))
 
     @torch.no_grad()
-    def min_sense_cosine_matrix(self, words, k=10):
+    def min_sense_cosine_matrix(self, words, k=5):
         sense_dict = {word: [TopK(k) for _ in range(self.n_sense_vectors)] for word in words}
         id2word = {k: self.decode([k]) for k in range(0, self.vocab_size)}
         word2id = {word: self.encode(word)[1] for word in words}

@@ -328,7 +328,7 @@ class BackpackLM(nn.Module):
         return idx
 
     @torch.no_grad()
-    def sense_vector(self, mini_batch_size=12):
+    def sense_vector(self, mini_batch_size=12, device='cpu'):
         # vocab = torch.arange(0, self.config.vocab_size, dtype=torch.int).unsqueeze(dim=0)
         # s1 = self.backpack.sense_vector_layer(vocab).squeeze().permute(0, 2, 1)
         single_batch_size = self.config.block_size * mini_batch_size
@@ -338,6 +338,7 @@ class BackpackLM(nn.Module):
         for i, batch_x in enumerate(vocab):
             print(f'load sense vector on batch {i * single_batch_size} - {i * single_batch_size + single_batch_size - 1}')
             batch_x[batch_x > self.config.vocab_size - 1] = 0
+            batch_x = batch_x.to(device)
             res[i * single_batch_size: i * single_batch_size + single_batch_size] = self.backpack.sense_vector_layer(batch_x).permute(0, 1, 3, 2).view(-1, self.config.n_sense_vector, self.config.n_embd)
         return res[:self.config.vocab_size]
 

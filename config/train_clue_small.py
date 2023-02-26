@@ -13,8 +13,8 @@ block_size = 1024
 gradient_accumulation_steps = 5
 
 # this makes total number of tokens be 300B
-max_iters = 600000
-lr_decay_iters = 600000
+max_iters = 500000
+lr_decay_iters = 500000
 
 # eval stuff
 eval_interval = 1000
@@ -24,6 +24,6 @@ log_interval = 10
 # weight decay
 weight_decay = 1e-1
 
-out_dir = 'clue_micro'
+out_dir = 'clue_small'
 dataset = 'clue_small'
 is_chinese = True

@@ -1,5 +1,7 @@
 import os
 import pickle
+
+import numpy as np
 import torch
 import tiktoken
 from transformers import BertTokenizer
@@ -12,8 +14,19 @@ seed = 1337
 device = 'cuda'  # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 compile = False  # use PyTorch 2.0 to compile the model to be faster
 is_chinese = False
+dtype = 'bfloat16'
+bias = False
+
+# other params
+evaluation_data_path = 'data/clue_small/evaluation.bin'
+eval_iters = 500
+block_size = 1024
+batch_size = 12
+
 exec(open('configurator.py').read())  # overrides from command line or config file
 # -----------------------------------------------------------------------------
+
+device_type = 'cuda' if 'cuda' in device else 'cpu'
 
 
 def load_model():
@@ -62,3 +75,15 @@ def load_model():
         encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
         decode = lambda l: enc.decode(l)
     return model, encode, decode
+
+
+def get_batch(data):
+    ix = torch.randint(len(data) - block_size, (batch_size,))
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    if device_type == 'cuda':
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    return x, y

@@ -5,7 +5,7 @@ import pickle
 
 import torch
 
-from experiments.load_model import load_model, device
+from experiments.loader import load_model, device
 from experiments.utils import TopK
 
 

@@ -39,6 +39,7 @@ log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
+backup_checkpoint_step = 5000
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
 wandb_log = False # disabled by default
@@ -259,6 +260,20 @@ t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
+
+
+def save_checkpoint(ckpt_file_name):
+    cp = {
+        'model': raw_model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'model_args': model_args,
+        'iter_num': iter_num,
+        'best_val_loss': best_val_loss,
+        'config': config,
+    }
+    print(f"saving checkpoint to {out_dir}")
+    torch.save(cp, os.path.join(out_dir, ckpt_file_name))
+
 while True:
 
     # determine and set the learning rate for this iteration
@@ -281,16 +296,9 @@ while True:
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:
-                checkpoint = {
-                    'model': raw_model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'model_args': model_args,
-                    'iter_num': iter_num,
-                    'best_val_loss': best_val_loss,
-                    'config': config,
-                }
-                print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
+                save_checkpoint('ckpt.pt')
+    if backup_checkpoint_step and iter_num % backup_checkpoint_step == 0 and iter_num > 0 and master_process:
+        save_checkpoint(f'ckpt_{iter_num}.pt')
     if iter_num == 0 and eval_only:
         break
 

@@ -130,17 +130,16 @@ class LMSenseVectorLayer(SenseVectorLayer):
         super().__init__()
         self.wte = wte
         self.n_embd, self.n_sense_vector = config.n_embd, config.n_sense_vector
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.ff_1 = BackpackFF(config.n_embd, config.n_embd, config.dropout, config.bias)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.ff_2 = BackpackFF(config.n_embd, config.n_embd * config.n_sense_vector, config.dropout, config.bias)
+        self.ln_2 = LayerNorm(config.n_embd * config.n_sense_vector, bias=config.bias)
 
     def sense_func(self, x):
         x = self.wte(x)
-        x = x + self.ff_1(self.ln_1(x))  # TODO before or after?
-        # TODO addtional res-net here?
-        x = x.unsqueeze(dim=-1) + self.ff_2(self.ln_2(x)).reshape(*x.shape, self.n_sense_vector)
-        return x
+        x = self.ln_1(x + self.ff_1(x))
+        x = x.unsqueeze(dim=-1) + self.ff_2(x).reshape(*x.shape, self.n_sense_vector)
+        return self.ln_2(x.reshape(*x.shape[:2], -1)).reshape(*x.shape)
 
 
 class LMContextualizationLayer(ContextualizationLayer):
@@ -171,12 +170,11 @@ class LMContextualizationLayer(ContextualizationLayer):
 class LMLogitLayer(LogitLayer):
     def __init__(self, wte, config: BackpackLMConfig):
         super(LMLogitLayer, self).__init__()
-        self.ln_f = nn.LayerNorm(config.n_embd)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         wte.weight = self.lm_head.weight  # https://paperswithcode.com/method/weight-tying
 
     def logit_func(self, o):
-        return self.lm_head(self.ln_f(o))
+        return self.lm_head(o)
 
 
 class BackpackLM(nn.Module):

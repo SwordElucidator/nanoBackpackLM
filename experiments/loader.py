@@ -7,6 +7,7 @@ import tiktoken
 from transformers import BertTokenizer
 
 from backpack import BackpackLM, BackpackLMConfig
+from model import GPT, GPTConfig
 
 # -----------------------------------------------------------------------------
 out_dir = 'out'  # ignored if init_from is not 'resume'
@@ -22,12 +23,14 @@ evaluation_data_path = 'data/clue_small/evaluation.bin'
 eval_iters = 500
 block_size = 1024
 batch_size = 12
+model_name = 'backpack-lm'
 
 exec(open('configurator.py').read())  # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
 device_type = 'cuda' if 'cuda' in device else 'cpu'
-
+Model = BackpackLM if model_name == 'backpack-lm' else GPT
+Config = BackpackLMConfig if model_name == 'backpack-lm' else GPTConfig
 
 def load_model():
     torch.manual_seed(seed)
@@ -37,8 +40,8 @@ def load_model():
     # init from a model saved in a specific directory
     ckpt_path = os.path.join(out_dir, 'ckpt.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
-    conf = BackpackLMConfig(**checkpoint['model_args'])
-    model = BackpackLM(conf)
+    conf = Config(**checkpoint['model_args'])
+    model = Model(conf)
     state_dict = checkpoint['model']
     unwanted_prefix = '_orig_mod.'
     for k, v in list(state_dict.items()):

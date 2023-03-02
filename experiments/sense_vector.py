@@ -15,20 +15,18 @@ class SenseVectorExperiment(object):
     def __init__(self):
         self.model, self.encode, self.decode = load_model()
         self.sense_vector = self.model.sense_vector(mini_batch_size=4, device=device)
-        self.word_vectors = self.model.wte(torch.arange(self.vocab_size))
         self.vocab_size = self.sense_vector.shape[0]
+        self.word_vectors = self.model.wte(torch.arange(self.vocab_size).to(device))
         self.n_sense_vectors = self.sense_vector.shape[1]
+        self.id2word = {k: self.decode([k]) for k in range(0, self.vocab_size)}
+        self.word2id = {word: self.encode(word)[1] for word in self.id2word.values()}
 
     @torch.no_grad()
-    def sense_projection(self, xid, k=5):
-        output = self.model.backpack.logit_layer(self.sense_vector[xid])
-        mult_result = torch.sum(torch.multiply(self.word_vectors, output), dim=-1)
-        # top k
-        top_k = TopK(k)
-        for i, n in enumerate(mult_result):
-            top_k.append((n, i))
-        return top_k.top_k()
-
+    def sense_projection(self, word, k=5):
+        senses = self.sense_vector[self.word2id[word]].to(device)
+        output = self.model.backpack.logit_layer(senses)
+        topk = torch.topk(output, 5, dim=-1).indices.to('cpu').numpy()
+        return [[self.id2word[i] for i in row] for row in topk]
 
     @torch.no_grad()
     def cosine_similarity(self, x1id, x2id):
@@ -41,26 +39,26 @@ class SenseVectorExperiment(object):
     @torch.no_grad()
     def min_sense_cosine_matrix(self, words, k=5):
         sense_dict = {word: [TopK(k) for _ in range(self.n_sense_vectors)] for word in words}
-        id2word = {k: self.decode([k]) for k in range(0, self.vocab_size)}
-        word2id = {word: self.encode(word)[1] for word in words}
         for word in words:
             print(f'analysing on word {word}')
-            similarities = self.cosine_similarity(word2id[word], torch.arange(0, self.vocab_size))  # len, k
+            similarities = self.cosine_similarity(self.word2id[word], torch.arange(0, self.vocab_size))  # len, k
             for j in range(0, self.vocab_size):
-                if j == word2id[word]:
+                if j == self.word2id[word]:
                     continue
                 for l, v in enumerate(similarities[j]):
-                    sense_dict[word][l].append((float(v), id2word[j]))
+                    sense_dict[word][l].append((float(v), self.id2word[j]))
         return sense_dict
 
 
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
     words = ['天', '地', '沙', '哲']
-    cos_sim = ex.min_sense_cosine_matrix(words)
-    pickle.dump(cos_sim, open('sense_vector.p', 'wb+'))
     for word in words:
-        print(word)
-        for i in range(ex.n_sense_vectors):
-            top_k = cos_sim[word][i].top_k()
-            print(f"sense {i}: " + ' '.join(c[1] for c in top_k))
+        print(ex.sense_projection(word))
+    # cos_sim = ex.min_sense_cosine_matrix(words)
+    # pickle.dump(cos_sim, open('sense_vector.p', 'wb+'))
+    # for word in words:
+    #     print(word)
+    #     for i in range(ex.n_sense_vectors):
+    #         top_k = cos_sim[word][i].top_k()
+    #         print(f"sense {i}: " + ' '.join(c[1] for c in top_k))

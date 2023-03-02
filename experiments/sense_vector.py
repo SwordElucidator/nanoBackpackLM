@@ -3,6 +3,7 @@ this file includes several experiments on the sense vector
 """
 import pickle
 
+import numpy as np
 import torch
 
 from experiments.loader import load_model, device
@@ -14,8 +15,20 @@ class SenseVectorExperiment(object):
     def __init__(self):
         self.model, self.encode, self.decode = load_model()
         self.sense_vector = self.model.sense_vector(mini_batch_size=4, device=device)
+        self.word_vectors = self.model.wte(torch.arange(self.vocab_size))
         self.vocab_size = self.sense_vector.shape[0]
         self.n_sense_vectors = self.sense_vector.shape[1]
+
+    @torch.no_grad()
+    def sense_projection(self, xid, k=5):
+        output = self.model.backpack.logit_layer(self.sense_vector[xid])
+        mult_result = torch.sum(torch.multiply(self.word_vectors, output), dim=-1)
+        # top k
+        top_k = TopK(k)
+        for i, n in enumerate(mult_result):
+            top_k.append((n, i))
+        return top_k.top_k()
+
 
     @torch.no_grad()
     def cosine_similarity(self, x1id, x2id):

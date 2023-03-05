@@ -14,7 +14,7 @@ from experiments.utils import TopK
 class SenseVectorExperiment(object):
     def __init__(self):
         self.model, self.encode, self.decode = load_model()
-        self.sense_vector = self.model.sense_vector(mini_batch_size=4, device=device)
+        self.sense_vector = self.model.sense_vectors(device=device)
         self.vocab_size = self.sense_vector.shape[0]
         self.word_vectors = self.model.wte(torch.arange(self.vocab_size).to(device))
         self.n_sense_vectors = self.sense_vector.shape[1]

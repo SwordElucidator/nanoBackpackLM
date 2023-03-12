@@ -17,6 +17,7 @@ compile = False  # use PyTorch 2.0 to compile the model to be faster
 is_chinese = False
 dtype = 'bfloat16'
 bias = False
+strict = True
 
 # other params
 evaluation_data_path = 'data/clue_small/evaluation.bin'
@@ -47,7 +48,7 @@ def load_model():
     for k, v in list(state_dict.items()):
         if k.startswith(unwanted_prefix):
             state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=strict)
     model.eval()
     model.to(device)
     if compile:

@@ -47,6 +47,10 @@ class ContextualizationLayer(nn.Module, ABC):
             assert bool(torch.all(torch.abs(self.__forward_test(alpha, sense_x).data - o.data) < 1e-5).numpy())
         return o  # (batch, n, d)
 
+    def analyse_sense_contextualization(self, x, sense_x):
+        alpha = self.contextualization_weight_func(x)
+        return torch.matmul(alpha, sense_x.permute(0, 3, 1, 2)).permute(0, 2, 1, 3)
+
 
 class LogitLayer(nn.Module, ABC):
     def __init__(self):
@@ -70,7 +74,11 @@ class Backpack(nn.Module):
     def forward(self, x):
         sense_x = self.sense_vector_layer(x)  # batch, n, d, k
         o = self.contextualization_layer(x, sense_x)  # (batch, n, d)
-        return self.logit_layer(o)  # no softmax
+        return self.logit_layer(o), sense_x, o  # no softmax
+
+    def analyse_sense_contextualization(self, x):
+        sense_x = self.sense_vector_layer(x)  # batch, n, d, k
+        return self.contextualization_layer.analyse_sense_contextualization(x, sense_x)
 
     @torch.no_grad()
     def sense_vectors(self, vocab_size, device='cpu'):
@@ -203,7 +211,7 @@ class BackpackLM(nn.Module):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
 
     def forward(self, idx, targets=None):
-        logits = self.backpack(idx)
+        logits, _, _ = self.backpack(idx)
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)

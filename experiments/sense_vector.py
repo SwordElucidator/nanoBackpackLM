@@ -10,6 +10,7 @@ from transformers import GPT2LMHeadModel
 
 from experiments.loader import load_model, device
 from experiments.utils import TopK
+from model import GPT
 
 
 @torch.no_grad()
@@ -136,11 +137,11 @@ class SenseVectorExperiment(object):
             for line in file:
                 word1, word2, val_str = line.strip().split()
 
-                sense1 = self.get_contextualized_sense(word1)
-                sense2 = self.get_contextualized_sense(word2)
-                # encoded1, encoded2 = self.encode(word1)[1:-1], self.encode(word2)[1:-1]
-                # sense1 = reduce(operator.add, (self.sense_vector[c] for c in encoded1)) / len(encoded1)
-                # sense2 = reduce(operator.add, (self.sense_vector[c] for c in encoded2)) / len(encoded2)
+                # sense1 = self.get_contextualized_sense(word1)
+                # sense2 = self.get_contextualized_sense(word2)
+                encoded1, encoded2 = self.encode(word1)[1:-1], self.encode(word2)[1:-1]
+                sense1 = reduce(operator.add, (self.sense_vector[c] for c in encoded1)) / len(encoded1)
+                sense2 = reduce(operator.add, (self.sense_vector[c] for c in encoded2)) / len(encoded2)
 
                 word_sim_std.append(float(val_str))
                 # cos_sim = np.dot(sense1, sense2)
@@ -152,12 +153,19 @@ class SenseVectorExperiment(object):
                 print(f'WordSim-{x} sense:{i + 1} Score:{corr_coef}')
             file.close()
 
-    def _get_wte_layer(self):
-        model = GPT2LMHeadModel.from_pretrained("uer/gpt2-chinese-cluecorpussmall")
+    def _get_huggingface_wte_layer(self, name):
+        model = GPT2LMHeadModel.from_pretrained(name)  # "uer/gpt2-chinese-cluecorpussmall"
         return model.transformer.wte
 
-    def chinese_word_sim_240_297_test_on_gpt2(self, out_dir='clue_micro_gpt2'):
-        wte_layer = self._get_wte_layer()
+    def _get_local_wte_layer(self, name):
+        model = load_model(GPT, name)[0]
+        return model.transformer.wte
+
+    def chinese_word_sim_240_297_test_on_gpt2(self, name='clue_micro_gpt2', from_huggingface=False):
+        if from_huggingface:
+            wte_layer = self._get_huggingface_wte_layer(name)
+        else:
+            wte_layer = self._get_local_wte_layer(name)
         word_sim_type = ['240', '297']
         for x in word_sim_type:
             file = open('data/similarity/wordsim-' + x + '.txt')

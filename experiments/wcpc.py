@@ -1,6 +1,7 @@
 import json
 
 import torch
+from transformers import GPT2LMHeadModel
 
 from experiments.loader import load_model, device
 from torch.nn import functional as F
@@ -12,15 +13,17 @@ def load_dev_set():
         return [json.loads(line) for line in f.readlines()]
 
 
-def chinese_wcpc_test(k=3):
+def chinese_wcpc_test(huggingface_gpt=False, k=3):
     top1, top3 = 0, 0
     model, encode, decode = load_model()
+    if huggingface_gpt:
+        model = GPT2LMHeadModel.from_pretrained("uer/gpt2-chinese-cluecorpussmall")
     dev_set = load_dev_set()
     for data in dev_set:
         text, true_word = data['masked_text'], data['correct_word']
         start = text[:text.index('<mask>')]
         length = text.count('<mask>')
-        original_start_length = encode(start)[:- 1]
+        start_tokens = encode(start)[:- 1]
         beam_search = [(torch.tensor(encode(start)[:- 1], dtype=torch.long, device=device), 1)]
         while length:
             new_beam = []
@@ -37,7 +40,7 @@ def chinese_wcpc_test(k=3):
             beam_search = sorted(new_beam, key=lambda x: -x[1])[:k]
         print(f'right word: {true_word}')
         for i, (tokens, _) in enumerate(beam_search):
-            word = decode(tokens[len(original_start_length):]).replace(' ', '')
+            word = decode(tokens[len(start_tokens):]).replace(' ', '')
             if not word.strip():
                 import pdb
                 pdb.set_trace()
@@ -52,4 +55,4 @@ def chinese_wcpc_test(k=3):
 
 
 if __name__ == '__main__':
-    print(chinese_wcpc_test())
+    print(chinese_wcpc_test(huggingface_gpt=True))

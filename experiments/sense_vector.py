@@ -11,6 +11,7 @@ from transformers import GPT2LMHeadModel
 from experiments.loader import load_model, device
 from experiments.utils import TopK
 from model import GPT
+from torch.nn import functional as F
 
 
 @torch.no_grad()
@@ -127,7 +128,7 @@ class SenseVectorExperiment(object):
             out[piece] = usable_composition_ratio  # n_sense_vector, usable_sequence_length, len(word)~ratio
         return out
 
-    def chinese_word_sim_240_297_test(self):
+    def chinese_word_sim_240_297_test(self):  # for sense vector
         word_sim_type = ['240', '297']
         for x in word_sim_type:
             file = open('data/similarity/wordsim-' + x + '.txt')
@@ -186,11 +187,62 @@ class SenseVectorExperiment(object):
             print(f'WordSim-{x} Score:{corr_coef}')
             file.close()
 
+    # def _beam_search
+    def alpha_modification_generation(self, start_words, length, alpha_modifier=None, k=3):
+        # patch
+        original_weight_func = self.model.backpack.contextualization_layer.contextualization_weight_func
+
+        if alpha_modifier:
+            def new_weight_func(x):
+                alpha = original_weight_func(x)
+                return alpha_modifier(alpha)
+
+            self.model.backpack.contextualization_layer.contextualization_weight_func = new_weight_func
+
+        start_tokens = self.encode(start_words)[:- 1]
+        beam_search = [(torch.tensor(start_tokens, dtype=torch.long, device=device), 1)]
+        left_length = length
+        while left_length:
+            new_beam = []
+            for tokens, prob in beam_search:
+
+                logits = self.model(tokens[None, ...])[0][0, -1, :]
+                topk = torch.topk(F.softmax(logits, dim=-1), k=k + 2)
+                for index, new_prob in zip(topk.indices, topk.values):
+                    if self.decode(index) not in [
+                        '[UNK]', '；', ';', '[ U N K ]', '"', '”', '“', '、', '「', '」', '【', '】', '`', '…', '……'
+                    ] and index != 100:
+                        new_beam.append((torch.cat((tokens, torch.tensor([index]))), new_prob * prob))
+                    new_beam.append((torch.cat((tokens, torch.tensor([index]))), new_prob * prob))
+            left_length -= 1
+            beam_search = sorted(new_beam, key=lambda x: -x[1])[:k]
+
+        self.model.backpack.contextualization_layer.contextualization_weight_func = original_weight_func
+        return [(self.decode(tokens), prob) for tokens, prob in beam_search]
+
+    def amplifier_generation_test(self, start_words, length, target_word, amplifier, k=3):
+        start_index = start_words.index(target_word) + 1
+
+        def modifier(alpha):
+            amp = torch.tensor(amplifier)
+            new_ratio = amp[None, None, :].expand(1, alpha.shape[1], len(amp))
+            original_weight_sum = alpha[:, :, -1, start_index: start_index + len(target_word)].sum(dim=-1)
+            new_weight_sum = alpha[:, :, -1, start_index: start_index + len(target_word)] * new_ratio
+            new_weight = new_weight_sum / new_weight_sum.sum(-1).unsqueeze(2) * original_weight_sum.unsqueeze(2)
+            alpha[:, :, -1, start_index: start_index + len(target_word)] = new_weight
+            return alpha
+
+        return self.alpha_modification_generation(start_words, length, modifier, k)
+
 
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
-    ex.chinese_word_sim_240_297_test()
-    ex.chinese_word_sim_240_297_test_on_gpt2()
+    print(ex.alpha_modification_generation('田径项目包括', 20, None))
+    print(ex.amplifier_generation_test('田径项目包括', 20, '田径', [4, 1]))
+    print(ex.amplifier_generation_test('田径项目包括', 20, '田径', [1, 4]))
+
+    # ex.chinese_word_sim_240_297_test()
+    # ex.chinese_word_sim_240_297_test_on_gpt2()
     # word_composition = ex.word_composition('新闻', [
     #     '新闻',
     #     '最近新闻里常报道特朗普总统的一些逸闻，有时也让人哭笑无泪。', '新闻时间即将结束，接下来是动画片放映时间',

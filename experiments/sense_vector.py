@@ -188,7 +188,7 @@ class SenseVectorExperiment(object):
             file.close()
 
     # def _beam_search
-    def alpha_modification_generation(self, start_words, length, alpha_modifier=None, k=3):
+    def alpha_modification_generation(self, prompt, length, alpha_modifier=None, k=3):
         # patch
         original_weight_func = self.model.backpack.contextualization_layer.contextualization_weight_func
 
@@ -199,7 +199,7 @@ class SenseVectorExperiment(object):
 
             self.model.backpack.contextualization_layer.contextualization_weight_func = new_weight_func
 
-        start_tokens = self.encode(start_words)[:- 1]
+        start_tokens = self.encode(prompt)[:- 1]
         beam_search = [(torch.tensor(start_tokens, dtype=torch.long, device=device), 1)]
         left_length = length
         while left_length:
@@ -220,8 +220,8 @@ class SenseVectorExperiment(object):
         self.model.backpack.contextualization_layer.contextualization_weight_func = original_weight_func
         return [(self.decode(tokens), prob) for tokens, prob in beam_search]
 
-    def amplifier_generation_test(self, start_words, length, target_word, amplifier, k=3):
-        start_index = start_words.index(target_word) + 1
+    def amplified_generation_test(self, prompt, length, target_word, amplifier, k=3):
+        start_index = prompt.index(target_word) + 1
 
         def modifier(alpha):
             amp = torch.tensor(amplifier)
@@ -232,14 +232,77 @@ class SenseVectorExperiment(object):
             alpha[:, :, -1, start_index: start_index + len(target_word)] = new_weight
             return alpha
 
-        return self.alpha_modification_generation(start_words, length, modifier, k)
+        return self.alpha_modification_generation(prompt, length, modifier, k)
+
+    def bias_check_on_sense_vector(self, words, target_words):
+        logits = self.compositional_sense_projection(words, 'contextualized')
+        log_probs = torch.log(F.softmax(logits, dim=-1))
+        probs = []
+        for target_word in target_words:
+            assert len(target_word) == 1
+            word_id = self.encode(target_word)[1]
+            probs.append(log_probs[:, word_id])
+        return probs
+
+    def debiasing_test_on_generate_target_words(self, prompts, to_modify_word, bias_words, sense_index=10, sense_ratio=0.5):
+        """
+        some prompts
+        """
+
+        old_sense_vector_layer_forward = self.model.backpack.sense_vector_layer.forward
+        assert len(bias_words) == 2
+        bias_indices = self.encode(bias_words)[1: -1]
+        to_modify_indices = self.encode(to_modify_word)[1: -1]
+
+        def modified_sense_vector(x):
+            sense_vec = old_sense_vector_layer_forward(x)
+            word_indices = [i for i, ind in enumerate(x[0]) if ind in to_modify_indices]
+            sense_vec[0, word_indices, :, sense_index] *= sense_ratio
+            return sense_vec
+
+        try:
+            self.model.backpack.sense_vector_layer.forward = modified_sense_vector
+
+            total_diff = 0
+            for prompt in prompts:
+                tokens = torch.tensor(self.encode(prompt)[:- 1])
+                logits = self.model(tokens[None, ...])[0][0, -1, :]
+                probs = F.softmax(logits, dim=-1)
+                diff = torch.max(probs[bias_indices[0]] / probs[bias_indices[1]],
+                                 probs[bias_indices[1]] / probs[bias_indices[0]])
+                total_diff += diff
+        finally:
+            self.model.backpack.sense_vector_layer.forward = old_sense_vector_layer_forward
+        return total_diff / len(prompts)
 
 
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
-    print(ex.alpha_modification_generation('田径项目包括', 20, None))
-    print(ex.amplifier_generation_test('田径项目包括', 20, '田径', [4, 1]))
-    print(ex.amplifier_generation_test('田径项目包括', 20, '田径', [1, 4]))
+    for word in ['兵', '警', '官', '僧', '尼', '师', '牧', '护', '洁']:
+        print(word)
+        he, her = ex.bias_check_on_sense_vector(word, ['他', '她'])
+        # max_diff = torch.argmax(torch.abs(he - her))
+        print((he - her)[3])
+    characters = ['兵', '警', '官', '僧', '尼', '师', '牧', '护', '保洁']
+    combined_words = ['士兵', '警察', '官员', '僧人', '老尼', '老师', '牧民', '护士', '保洁']
+    prompts = [
+        '我的%s说，',
+        '这个%s相信',
+        '%s进到屋子里，',
+    ]
+    for word, combined_word in zip(characters, combined_words):
+        print(word)
+        for i in range(16):
+            if i == 3:
+                print(f'sense {i}')
+                for r in [1, 0.6, 0.3, 0]:
+                    print(r, ex.debiasing_test_on_generate_target_words(
+                        [p % combined_word for p in prompts], word, ['他', '她'], i, r
+                    ))
+            # print()
+    # print(ex.alpha_modification_generation('光污染', 20, None))
+    # print(ex.amplified_generation_test('光污染', 20, '光污染', [4, 1, 1]))
+    # print(ex.amplified_generation_test('光污染', 20, '光污染', [1, 2, 2]))
 
     # ex.chinese_word_sim_240_297_test()
     # ex.chinese_word_sim_240_297_test_on_gpt2()
@@ -265,6 +328,7 @@ if __name__ == '__main__':
     # words = ['网络故', '突发网络故', '有一段网络故']
 
     # words = ['画蛇添']
+    words = ['他', '她', '男', '女']
     # for word in words:
     #     print(ex.sense_projection(word))
     # for word in words:
@@ -273,10 +337,9 @@ if __name__ == '__main__':
     #     # print(ex.decode(next_topk.indices.to('cpu')))
     #     sense_projection = ex.compositional_sense_projection(word, 'contextualized')
     #     topk_vals = next_topk.values.to('cpu').detach().numpy()
-    #     for i, index in enumerate(next_topk.indices.to('cpu').numpy()):
-    #         print(ex.id2word[index], topk_vals[i])
-    #         print(sense_projection[:, index])
-    #
+    #     # for i, index in enumerate(next_topk.indices.to('cpu').numpy()):
+    #     #     print(ex.id2word[index], topk_vals[i])
+    #     #     print(sense_projection[:, index])
     #     topk = torch.topk(sense_projection, 10, dim=-1).indices.to('cpu').numpy()
     #     print([[ex.id2word[i] for i in row] for row in topk])
 

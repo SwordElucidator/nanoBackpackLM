@@ -17,6 +17,7 @@ compile = False  # use PyTorch 2.0 to compile the model to be faster
 is_chinese = False
 dtype = 'bfloat16'
 bias = False
+strict = True
 
 # other params
 evaluation_data_path = 'data/clue_small/evaluation.bin'
@@ -32,22 +33,22 @@ device_type = 'cuda' if 'cuda' in device else 'cpu'
 Model = BackpackLM if model_name == 'backpack-lm' else GPT
 Config = BackpackLMConfig if model_name == 'backpack-lm' else GPTConfig
 
-def load_model():
+def load_model(force_model=None, force_dir=None):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cuda.matmul.allow_tf32 = True  # allow tf32 on matmul
     torch.backends.cudnn.allow_tf32 = True  # allow tf32 on cudnn
     # init from a model saved in a specific directory
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    ckpt_path = os.path.join(force_dir if force_dir else out_dir, 'ckpt.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
     conf = Config(**checkpoint['model_args'])
-    model = Model(conf)
+    model = (force_model if force_model else Model)(conf)
     state_dict = checkpoint['model']
     unwanted_prefix = '_orig_mod.'
     for k, v in list(state_dict.items()):
         if k.startswith(unwanted_prefix):
             state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=strict)
     model.eval()
     model.to(device)
     if compile:

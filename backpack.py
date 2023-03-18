@@ -47,6 +47,10 @@ class ContextualizationLayer(nn.Module, ABC):
             assert bool(torch.all(torch.abs(self.__forward_test(alpha, sense_x).data - o.data) < 1e-5).numpy())
         return o  # (batch, n, d)
 
+    def analyse_sense_contextualization(self, x, sense_x):
+        alpha = self.contextualization_weight_func(x)
+        return torch.matmul(alpha, sense_x.permute(0, 3, 1, 2)).permute(0, 2, 1, 3)
+
 
 class LogitLayer(nn.Module, ABC):
     def __init__(self):
@@ -70,7 +74,16 @@ class Backpack(nn.Module):
     def forward(self, x):
         sense_x = self.sense_vector_layer(x)  # batch, n, d, k
         o = self.contextualization_layer(x, sense_x)  # (batch, n, d)
-        return self.logit_layer(o)  # no softmax
+        return self.logit_layer(o), sense_x, o  # no softmax
+
+    def analyse_sense_contextualization(self, x):
+        sense_x = self.sense_vector_layer(x)  # batch, n, d, k
+        return self.contextualization_layer.analyse_sense_contextualization(x, sense_x)
+
+    @torch.no_grad()
+    def sense_vectors(self, vocab_size, device='cpu'):
+        vocab = torch.arange(0, vocab_size, dtype=torch.int).to(device).unsqueeze(dim=0)
+        return self.sense_vector_layer(vocab).squeeze().permute(0, 2, 1)
 
 
 # BackpackLM
@@ -199,7 +212,7 @@ class BackpackLM(nn.Module):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * config.n_layer))
 
     def forward(self, idx, targets=None):
-        logits = self.backpack(idx)
+        logits, _, _ = self.backpack(idx)
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
@@ -327,19 +340,8 @@ class BackpackLM(nn.Module):
         return idx
 
     @torch.no_grad()
-    def sense_vector(self, mini_batch_size=12, device='cpu'):
-        # vocab = torch.arange(0, self.config.vocab_size, dtype=torch.int).unsqueeze(dim=0)
-        # s1 = self.backpack.sense_vector_layer(vocab).squeeze().permute(0, 2, 1)
-        single_batch_size = self.config.block_size * mini_batch_size
-        batched_vocab_size = ((self.config.vocab_size + 1) // single_batch_size + 1) * single_batch_size
-        vocab = torch.arange(0, batched_vocab_size, dtype=torch.int).view(-1, mini_batch_size, self.config.block_size)
-        res = torch.zeros((batched_vocab_size, self.config.n_sense_vector, self.config.n_embd))
-        for i, batch_x in enumerate(vocab):
-            print(f'load sense vector on batch {i * single_batch_size} - {i * single_batch_size + single_batch_size - 1}')
-            batch_x[batch_x > self.config.vocab_size - 1] = 0
-            batch_x = batch_x.to(device)
-            res[i * single_batch_size: i * single_batch_size + single_batch_size] = self.backpack.sense_vector_layer(batch_x).permute(0, 1, 3, 2).view(-1, self.config.n_sense_vector, self.config.n_embd)
-        return res[:self.config.vocab_size]
+    def sense_vectors(self, device='cpu'):
+        return self.backpack.sense_vectors(self.config.vocab_size, device)
 
 
 if __name__ == '__main__':
@@ -352,3 +354,4 @@ if __name__ == '__main__':
     print(F.softmax(logits, dim=-1))
     print(logits.shape)
     print(f'loss: {loss}')
+    print(lm.sense_vectors().shape)

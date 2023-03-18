@@ -86,13 +86,14 @@ class BackpackLMConfig:
     n_sense_vector: int = 16
 
 
-class Transformer(nn.Module):
+class BackpackTransformer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.wpe = nn.Embedding(config.block_size, config.n_embd)
         self.drop = nn.Dropout(config.dropout)
-        self.h = nn.ModuleList([Block(config) for _ in range(config.n_layer)])
+        # one layer should be removed for the contextualization layer parameters
+        self.h = nn.ModuleList([Block(config) for _ in range(config.n_layer - 1)])
         self.ln_f = LayerNorm(config.n_embd, bias=config.bias)
 
     def forward(self, idx):
@@ -147,7 +148,7 @@ class LMContextualizationLayer(ContextualizationLayer):
     def __init__(self, wte, config):
         super().__init__()
         self.n_sense_vector, self.n_embd = config.n_sense_vector, config.n_embd
-        self.transformer = Transformer(config)
+        self.transformer = BackpackTransformer(config)
         self.transformer.wte = wte
         self.c_attn = nn.Linear(config.n_embd, 2 * config.n_embd, bias=False)
         self.attn_dropout = nn.Dropout(config.dropout)

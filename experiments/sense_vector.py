@@ -138,11 +138,11 @@ class SenseVectorExperiment(object):
             for line in file:
                 word1, word2, val_str = line.strip().split()
 
-                # sense1 = self.get_contextualized_sense(word1)
-                # sense2 = self.get_contextualized_sense(word2)
-                encoded1, encoded2 = self.encode(word1)[1:-1], self.encode(word2)[1:-1]
-                sense1 = reduce(operator.add, (self.sense_vector[c] for c in encoded1)) / len(encoded1)
-                sense2 = reduce(operator.add, (self.sense_vector[c] for c in encoded2)) / len(encoded2)
+                sense1 = self.get_contextualized_sense(word1)
+                sense2 = self.get_contextualized_sense(word2)
+                # encoded1, encoded2 = self.encode(word1)[1:-1], self.encode(word2)[1:-1]
+                # sense1 = reduce(operator.add, (self.sense_vector[c] for c in encoded1)) / len(encoded1)
+                # sense2 = reduce(operator.add, (self.sense_vector[c] for c in encoded2)) / len(encoded2)
 
                 word_sim_std.append(float(val_str))
                 # cos_sim = np.dot(sense1, sense2)
@@ -213,7 +213,6 @@ class SenseVectorExperiment(object):
                         '[UNK]', '；', ';', '[ U N K ]', '"', '”', '“', '、', '「', '」', '【', '】', '`', '…', '……'
                     ] and index != 100:
                         new_beam.append((torch.cat((tokens, torch.tensor([index]))), new_prob * prob))
-                    new_beam.append((torch.cat((tokens, torch.tensor([index]))), new_prob * prob))
             left_length -= 1
             beam_search = sorted(new_beam, key=lambda x: -x[1])[:k]
 
@@ -275,60 +274,118 @@ class SenseVectorExperiment(object):
             self.model.backpack.sense_vector_layer.forward = old_sense_vector_layer_forward
         return total_diff / len(prompts)
 
+    def debiasing_test_on_generate_target_words_gpt2(self, prompts, to_modify_word, bias_words):
+        """
+        some prompts
+        """
+        model = GPT2LMHeadModel.from_pretrained('uer/gpt2-chinese-cluecorpussmall')
+        model.eval()
+        assert len(bias_words) == 2
+        bias_indices = self.encode(bias_words)[1: -1]
+        with torch.no_grad():
+            if to_modify_word:
+                to_modify_indices = self.encode(to_modify_word)[1: -1]
+                diff = model.transformer.wte.weight[bias_indices][0] - model.transformer.wte.weight[bias_indices][1]
+                to_modify = model.transformer.wte.weight[to_modify_indices[0]]
+                proj_v_dir = torch.dot(to_modify, diff) / torch.dot(diff, diff) * diff
+                proj_v_nullspace = to_modify - proj_v_dir
+                model.transformer.wte.weight[to_modify_indices[0]] = proj_v_nullspace
+                model.lm_head.weight[to_modify_indices[0]] = proj_v_nullspace
+            try:
+                total_diff = 0
+                for prompt in prompts:
+                    tokens = torch.tensor(self.encode(prompt)[:- 1])
+                    logits = model(tokens[None, ...])[0][0, -1, :]
+                    probs = F.softmax(logits, dim=-1)
+                    diff = torch.max(probs[bias_indices[0]] / probs[bias_indices[1]],
+                                     probs[bias_indices[1]] / probs[bias_indices[0]])
+                    total_diff += diff
+            finally:
+                if to_modify_word:
+                    model.transformer.wte.weight[to_modify_indices[0]] = to_modify
+                    model.lm_head.weight[to_modify_indices[0]] = to_modify
+            return total_diff / len(prompts)
+
 
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
-    for word in ['兵', '警', '官', '僧', '尼', '师', '牧', '护', '洁']:
-        print(word)
-        he, her = ex.bias_check_on_sense_vector(word, ['他', '她'])
-        # max_diff = torch.argmax(torch.abs(he - her))
-        print((he - her)[3])
-    characters = ['兵', '警', '官', '僧', '尼', '师', '牧', '护', '保洁']
-    combined_words = ['士兵', '警察', '官员', '僧人', '老尼', '老师', '牧民', '护士', '保洁']
-    prompts = [
-        '我的%s说，',
-        '这个%s相信',
-        '%s进到屋子里，',
-    ]
-    for word, combined_word in zip(characters, combined_words):
-        print(word)
-        for i in range(16):
-            if i == 3:
-                print(f'sense {i}')
-                for r in [1, 0.6, 0.3, 0]:
-                    print(r, ex.debiasing_test_on_generate_target_words(
-                        [p % combined_word for p in prompts], word, ['他', '她'], i, r
-                    ))
+    # words = ['兵', '警', '师', '牧', '护']
+    # for word in words:
+    #     print(word)
+    #     he, her = ex.bias_check_on_sense_vector(word, ['他', '她'])
+    #     # max_diff = torch.argmax(torch.abs(he - her))
+    #     print(torch.topk((torch.abs(he - her)), k=3))
+    # characters = ['士兵', '伞兵', '警察',  '交警', '清洁工', '教师']
+    # combined_words = ['士兵', '伞兵', '警察',  '交警', '清洁工', '教师']
+    # prompts = [
+    #     '那个%s说，',
+    #     '这个%s相信',
+    #     '%s进到屋子里，',
+    #     '%s坐在车里，然后',
+    #     '%s走了过来，',
+    # ]
+    #
+    # for word, combined_word in zip(characters, combined_words):
+    #     print(word)
+    #     i = 3
+    #     # for i in range(64):
+    #     # # print(f'sense {i}')
+    #     #     print(ex.debiasing_test_on_generate_target_words(
+    #     #         [p % combined_word for p in prompts], word, ['他', '她'], i, 1
+    #     #     ) - ex.debiasing_test_on_generate_target_words(
+    #     #         [p % combined_word for p in prompts], word, ['他', '她'], i, 0
+    #     #     ))
+    #     # print(ex.debiasing_test_on_generate_target_words_gpt2(
+    #     #     [p % combined_word for p in prompts], word, ['他', '她']
+    #     # ))
+    #     # print(ex.debiasing_test_on_generate_target_words_gpt2(
+    #     #     [p % combined_word for p in prompts], None, ['他', '她']
+    #     # ))
+    #     for r in [1, 0.5, 0]:
+    #         print(r, ex.debiasing_test_on_generate_target_words(
+    #             [p % combined_word for p in prompts], word, ['他', '她'], i, r
+    #         ))
             # print()
-    # print(ex.alpha_modification_generation('光污染', 20, None))
-    # print(ex.amplified_generation_test('光污染', 20, '光污染', [4, 1, 1]))
-    # print(ex.amplified_generation_test('光污染', 20, '光污染', [1, 2, 2]))
+    print(ex.alpha_modification_generation('在这人间里，充满了', 20, None))
+    print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [4, 1]))
+    print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [1, 4]))
 
     # ex.chinese_word_sim_240_297_test()
     # ex.chinese_word_sim_240_297_test_on_gpt2()
-    # word_composition = ex.word_composition('新闻', [
-    #     '新闻',
-    #     '最近新闻里常报道特朗普总统的一些逸闻，有时也让人哭笑无泪。', '新闻时间即将结束，接下来是动画片放映时间',
-    #     '有篇新闻，你要不看看。相信我，多读读总有好处的',
-    #     '每天都有很多新闻从世界的四面八方向本报社汇聚'
-    # ])
-    # # reduce(operator.add, (torch.sum(compos, dim=1) / compos.shape[1] for compos in word_composition.values())) / len(
-    #     # word_composition)
-    # base = None
-    # for key, compos in word_composition.items():
-    #     print(key)
-    #     # print(ex.decode(ex.next_topk_words(key, 5).indices.detach().numpy()))
-    #     avg_compos = torch.sum(compos, dim=1) / compos.shape[1]
-    #     if base is None:
-    #         base = avg_compos
-    #     print(torch.abs(avg_compos - base))
-    # print(base)  # n_sense, words_len:  basically
+    # words = ['新闻', '沙发', '齐天大圣']
+    # for word in words:
+    #     print(word)
+    #     word_composition = ex.word_composition(word, [
+    #         f'{word}',
+    #         f'有很多{word}将要',
+    #         f'{word}被'
+    #         f'每天都有很多{word}',
+    #         f'电视里经常能看到{word}',
+    #         f'不管你喜不喜欢，{word}还是那么',
+    #         f'有哪位同学解释一下{word}是什么意思'
+    #     ])
+    #     # # reduce(operator.add, (torch.sum(compos, dim=1) / compos.shape[1] for compos in word_composition.values())) / len(
+    #     #     # word_composition)
+    #     base = sum([torch.sum(compos, dim=1) / compos.shape[1] for compos in word_composition.values()]) / len(word_composition)
+    #     ten, twe, other = 0, 0, 0
+    #     for key, compos in word_composition.items():
+    #         # print(key)
+    #         # print(ex.decode(ex.next_topk_words(key, 5).indices.detach().numpy()))
+    #         avg_differences = torch.sum(torch.abs(compos - base[:, None, :]), dim=1) / compos.shape[1]
+    #         for i, v in enumerate(avg_differences[:, 0]):
+    #             if v < 0.1:
+    #                 ten += 1
+    #             elif v < 0.2:
+    #                 twe += 1
+    #             else:
+    #                 other += 1
+    #         break
+    #     print(ten, twe, other)
 
     # words = ['天', '地', '沙', '哲', '政治', '既然', '合理性', '网络故', '画蛇添', '政治因']
     # words = ['网络故', '突发网络故', '有一段网络故']
 
-    # words = ['画蛇添']
-    words = ['他', '她', '男', '女']
+    # words = ['他', '她', '男', '女']
     # for word in words:
     #     print(ex.sense_projection(word))
     # for word in words:
@@ -340,8 +397,10 @@ if __name__ == '__main__':
     #     # for i, index in enumerate(next_topk.indices.to('cpu').numpy()):
     #     #     print(ex.id2word[index], topk_vals[i])
     #     #     print(sense_projection[:, index])
-    #     topk = torch.topk(sense_projection, 10, dim=-1).indices.to('cpu').numpy()
-    #     print([[ex.id2word[i] for i in row] for row in topk])
+    #     print(sense_projection[60][ex.encode('他')[1]])
+    #     print(sense_projection[60][ex.encode('她')[1]])
+    #     # topk = torch.topk(sense_projection, 10, dim=-1).indices.to('cpu').numpy()
+    #     # print([[ex.id2word[i] for i in row] for row in topk])
 
     # print(ex.cosine_similarity_on_chinese_characters('足球', '足球'))
     # print(ex.cosine_similarity_on_chinese_characters('入场券', '门票'))
@@ -358,11 +417,17 @@ if __name__ == '__main__':
     # print(ex.cosine_similarity_on_chinese_characters('钱', '现金', 'contextualized'))
     # print(ex.cosine_similarity_on_chinese_characters('心理学', '抑郁', 'contextualized'))
     # words = ['钱']
+    # words = ['画蛇添']
     # cos_sim_simple = ex.min_sense_cosine_matrix_on_chinese_characters(words)
     # # cos_sim = ex.min_sense_cosine_matrix_on_chinese_characters(words, strategy='contextualized')
     # for word in words:
     #     print(word)
     #     print(ex.generate_with(word, 20))
+    #     ex.encode('足')[1]
+    #     compo = ex.compositional_sense_projection(word, 'contextualized')
+    #     print(ex.compositional_sense_projection(word, 'contextualized')[:, ex.encode('足')[1]])
+    #
+    #
     #     for i in range(ex.n_sense_vectors):
     #         top_k_simple = cos_sim_simple[word][i].top_k()
     #         print(f"additional sense {i}: " + ' '.join(c[1] for c in top_k_simple))

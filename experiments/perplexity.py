@@ -13,7 +13,7 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 @torch.no_grad()
 def estimate_perplexity(from_huggingface_model_name=None):
     if from_huggingface_model_name:
-        model = GPT2LMHeadModel.from_pretrained(from_huggingface_model_name)
+        model = GPT2LMHeadModel.from_pretrained(from_huggingface_model_name).to(device_type)
     else:
         model = load_model()[0]
     eval_data = np.memmap(evaluation_data_path, dtype=np.uint16, mode='r')
@@ -22,11 +22,14 @@ def estimate_perplexity(from_huggingface_model_name=None):
     for k in range(eval_iters):
         X, Y = get_batch(eval_data)
         with ctx:
-            _, loss = model(X, Y)
+            if from_huggingface_model_name:
+                loss = model(input_ids=X, labels=Y).loss
+            else:
+                _, loss = model(X, Y)
         losses[k] = torch.exp(loss).item()
     return losses.mean()
 
 
 if __name__ == "__main__":
-    print(f'perplexity is {estimate_perplexity()}')
-    # print(f'perplexity is {estimate_perplexity("uer/gpt2-chinese-cluecorpussmall")}')
+    # print(f'perplexity is {estimate_perplexity()}')
+    print(f'perplexity is {estimate_perplexity("uer/gpt2-chinese-cluecorpussmall")}')

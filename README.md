@@ -1,13 +1,11 @@
 
-# nanoGPT
+# Nano Backpack LM
 
 ![nanoGPT](assets/nanogpt.jpg)
 
-The simplest, fastest repository for training/finetuning medium-sized GPTs. It is a rewrite of [minGPT](https://github.com/karpathy/minGPT) that prioritizes teeth over education. Still under active development, but currently the file `train.py` reproduces GPT-2 (124M) on OpenWebText, running on a single 8XA100 40GB node in about 4 days of training. The code itself is plain and readable: `train.py` is a ~300-line boilerplate training loop and `model.py` a ~300-line GPT model definition, which can optionally load the GPT-2 weights from OpenAI. That's it.
+The simplest repository for training/finetuning medium-sized Backpacks inspired by [nanoGPT](https://github.com/karpathy/nanoGPT).
 
-![repro124m](assets/gpt2_124M_loss.png)
-
-Because the code is so simple, it is very easy to hack to your needs, train new models from scratch, or finetune pretrained checkpoints (e.g. biggest one currently available as a starting point would be the GPT-2 1.3B model from OpenAI).
+Because the code is so simple, it is very easy to hack to your needs, train new models from scratch, or finetune pretrained checkpoints.
 
 ## install
 
@@ -21,7 +19,7 @@ Dependencies:
 - `pip install wandb` for optional logging <3
 - `pip install tqdm`
 
-## quick start
+## quick start (Follow the nanoGPT instruction; TODO in future)
 
 If you are not a deep learning professional and you just want to feel the magic and get your feet wet, the fastest way to get started is to train a character-level GPT on the works of Shakespeare. First, we download it as a single (1MB) file and turn it from raw text into one large stream of integers:
 
@@ -191,28 +189,3 @@ If you'd like to sample from a model you trained, use the `--out_dir` to point t
 For simple model benchmarking and profiling, `bench.py` might be useful. It's identical to what happens in the meat of the training loop of `train.py`, but omits much of the other complexities.
 
 Note that the code by default uses [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). At the time of writing (Dec 29, 2022) this makes `torch.compile()` available in the nightly release. The improvement from the one line of code is noticeable, e.g. cutting down iteration time from ~250ms / iter to 135ms / iter. Nice work PyTorch team!
-
-## todos
-
-- Investigate and add FSDP instead of DDP
-- Eval zero-shot perplexities on standard evals (e.g. LAMBADA? HELM? etc.)
-- Finetune the finetuning script, I think the hyperparams are not great
-- Schedule for linear batch size increase during training
-- Incorporate other embeddings (rotary, alibi)
-- Separate out the optim buffers from model params in checkpoints I think
-- Additional logging around network health (e.g. gradient clip events, magnitudes)
-- Few more investigations around better init etc.
-
-## troubleshooting
-
-Note that by default this repo uses PyTorch 2.0 (i.e. `torch.compile`). This is fairly new and experimental, and not yet available on all platforms (e.g. Windows). If you're running into related error messages try to disable this by adding `--compile=False` flag. This will slow down the code but at least it will run.
-
-For some context on this repository, GPT, and language modeling it might be helpful to watch my [Zero To Hero series](https://karpathy.ai/zero-to-hero.html). Specifically, the [GPT video](https://www.youtube.com/watch?v=kCc8FmEb1nY) is popular if you have some prior language modeling context.
-
-For more questions/discussions feel free to stop by **#nanoGPT** on Discord:
-
-[![](https://dcbadge.vercel.app/api/server/3zy8kqD9Cp?compact=true&style=flat)](https://discord.gg/3zy8kqD9Cp)
-
-## acknowledgements
-
-All nanoGPT experiments are powered by GPUs on [Lambda labs](https://lambdalabs.com), my favorite Cloud GPU provider. Thank you Lambda labs for sponsoring nanoGPT!

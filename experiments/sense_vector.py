@@ -233,6 +233,39 @@ class SenseVectorExperiment(object):
 
         return self.alpha_modification_generation(prompt, length, modifier, k)
 
+    def alpha_modifier_generation_evaluation(self, prompt, test_words, alpha_modifier=None):
+        original_weight_func = self.model.backpack.contextualization_layer.contextualization_weight_func
+
+        if alpha_modifier:
+            def new_weight_func(x):
+                alpha = original_weight_func(x)
+                return alpha_modifier(alpha)
+
+            self.model.backpack.contextualization_layer.contextualization_weight_func = new_weight_func
+
+        start_tokens = self.encode(prompt)[:- 1]
+        word_tokens = self.encode(test_words)[1:-1]
+
+        logits = self.model(torch.tensor(start_tokens, dtype=torch.long, device=device)[None, ...])[0][0][-1]
+        probs = F.softmax(logits, dim=-1)[word_tokens]
+
+        self.model.backpack.contextualization_layer.contextualization_weight_func = original_weight_func
+        return probs
+
+    def amplified_generation_evaluation(self, prompt, target_word, test_words, amplifier):
+        start_index = prompt.index(target_word) + 1
+
+        def modifier(alpha):
+            amp = torch.tensor(amplifier)
+            new_ratio = amp[None, None, :].expand(1, alpha.shape[1], len(amp))
+            original_weight_sum = alpha[:, :, -1, start_index: start_index + len(target_word)].sum(dim=-1)
+            new_weight_sum = alpha[:, :, -1, start_index: start_index + len(target_word)] * new_ratio
+            new_weight = new_weight_sum / new_weight_sum.sum(-1).unsqueeze(2) * original_weight_sum.unsqueeze(2)
+            alpha[:, :, -1, start_index: start_index + len(target_word)] = new_weight
+            return alpha
+
+        return self.alpha_modifier_generation_evaluation(prompt, test_words, modifier)
+
     def bias_check_on_sense_vector(self, words, target_words):
         logits = self.compositional_sense_projection(words, 'contextualized')
         log_probs = torch.log(F.softmax(logits, dim=-1))
@@ -346,9 +379,14 @@ if __name__ == '__main__':
     #             [p % combined_word for p in prompts], word, ['他', '她'], i, r
     #         ))
             # print()
-    print(ex.alpha_modification_generation('在这人间里，充满了', 20, None))
-    print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [4, 1]))
-    print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [1, 4]))
+    # print(ex.alpha_modification_generation('在这人间里，充满了', 20, None))
+    # print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [4, 1]))
+    # print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [1, 4]))
+    test_words = ['丘', '撒', '堡', '粒', '石', '海', '人', '球', '晒']
+    regular = ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [1, 1])
+
+    print(ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [4, 1]) / regular)
+    print(ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [1, 4]) / regular)
 
     # ex.chinese_word_sim_240_297_test()
     # ex.chinese_word_sim_240_297_test_on_gpt2()

@@ -6,6 +6,9 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 
+num_proc = 8
+
+
 def cc_generator():
     path = 'data/common_crawl/'
     for f_name in os.listdir(os.path.join(path)):

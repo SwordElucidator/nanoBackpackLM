@@ -77,7 +77,7 @@ backend = 'nccl' # 'nccl', 'gloo', etc.
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = True # use PyTorch 2.0 to compile the model to be faster
-is_chinese = False
+tokenizer_name = 'gpt2'
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
@@ -155,11 +155,11 @@ if init_from == 'scratch':
     print("Initializing a new model from scratch")
     # determine the vocab size we'll use for from-scratch training
     if meta_vocab_size is None:
-        if is_chinese:
+        if tokenizer_name == 'chinese-character-bert':
             print("defaulting to vocab_size of Chinese BERT to 21184 (21128 rounded up for efficiency)")
         else:
             print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
-    model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 21184 if is_chinese else 50304
+    model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 21184 if tokenizer_name == 'chinese-character-bert' else 50304
     gptconf = Config(**model_args)
     model = Model(gptconf)
 elif init_from == 'resume':

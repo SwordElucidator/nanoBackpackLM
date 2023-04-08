@@ -14,7 +14,7 @@ out_dir = 'out'  # ignored if init_from is not 'resume'
 seed = 1337
 device = 'cuda'  # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 compile = False  # use PyTorch 2.0 to compile the model to be faster
-is_chinese = False
+tokenizer_name = 'gpt2'
 dtype = 'bfloat16'
 bias = False
 strict = True
@@ -67,7 +67,7 @@ def load_model(force_model=None, force_dir=None):
         stoi, itos = meta['stoi'], meta['itos']
         encode = lambda s: [stoi[c] for c in s]
         decode = lambda l: ''.join([itos[i] for i in l])
-    elif is_chinese:
+    elif tokenizer_name == 'chinese-character-bert':
         print("Use Chinese GPT encodings...")
         tokenizer = BertTokenizer.from_pretrained("uer/gpt2-chinese-cluecorpussmall")
         encode = lambda s: tokenizer.encode(s)

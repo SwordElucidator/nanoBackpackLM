@@ -24,7 +24,7 @@ seed = 1337
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 dtype = 'bfloat16' # 'float32' or 'bfloat16' or 'float16'
 compile = False # use PyTorch 2.0 to compile the model to be faster
-is_chinese = False  # if chinese, use bert tokenizer
+tokenizer_name = 'gpt2'  # if chinese, use bert tokenizer
 exec(open('configurator.py').read()) # overrides from command line or config file
 # -----------------------------------------------------------------------------
 
@@ -76,7 +76,7 @@ if load_meta:
     stoi, itos = meta['stoi'], meta['itos']
     encode = lambda s: [stoi[c] for c in s]
     decode = lambda l: ''.join([itos[i] for i in l])
-elif is_chinese:
+elif tokenizer_name == 'chinese-character-bert':
     print("Use Chinese GPT encodings...")
     tokenizer = BertTokenizer.from_pretrained("uer/gpt2-chinese-cluecorpussmall")
     encode = lambda s: tokenizer.encode(s)

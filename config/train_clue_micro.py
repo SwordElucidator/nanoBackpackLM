@@ -29,4 +29,4 @@ weight_decay = 1e-1
 
 out_dir = 'clue_micro'
 dataset = 'clue_small'
-is_chinese = True
+tokenizer_name = 'chinese-character-bert'

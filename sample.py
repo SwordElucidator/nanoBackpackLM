@@ -10,6 +10,7 @@ from transformers import BertTokenizer
 
 from backpack import BackpackLM, BackpackLMConfig
 from model import GPTConfig, GPT
+from utils import HUGGINGFACE_TOKENIZERS
 
 # -----------------------------------------------------------------------------
 model_name = 'backpack-lm'
@@ -76,9 +77,10 @@ if load_meta:
     stoi, itos = meta['stoi'], meta['itos']
     encode = lambda s: [stoi[c] for c in s]
     decode = lambda l: ''.join([itos[i] for i in l])
-elif tokenizer_name == 'chinese-character-bert':
-    print("Use Chinese GPT encodings...")
-    tokenizer = BertTokenizer.from_pretrained("uer/gpt2-chinese-cluecorpussmall")
+elif tokenizer_name in HUGGINGFACE_TOKENIZERS.keys():
+    print(f"Use {tokenizer_name} encodings from Huggingface...")
+    klass, h_tokenizer_name = HUGGINGFACE_TOKENIZERS[tokenizer_name]
+    tokenizer = klass.from_pretrained(h_tokenizer_name)
     encode = lambda s: tokenizer.encode(s)
     decode = lambda l: tokenizer.decode(l)
 else:

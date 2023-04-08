@@ -29,6 +29,7 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from backpack import BackpackLM, BackpackLMConfig
 from model import GPTConfig, GPT
+from utils import HUGGINGFACE_TOKENIZERS
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -154,12 +155,19 @@ if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
     # determine the vocab size we'll use for from-scratch training
+    vocab_size = None
     if meta_vocab_size is None:
-        if tokenizer_name == 'chinese-character-bert':
-            print("defaulting to vocab_size of Chinese BERT to 21184 (21128 rounded up for efficiency)")
+        if tokenizer_name in HUGGINGFACE_TOKENIZERS.keys():
+            klass, h_tokenizer_name = HUGGINGFACE_TOKENIZERS[tokenizer_name]
+            tokenizer = klass.from_pretrained(h_tokenizer_name)
+            vocab_size = (len(tokenizer.vocab) // 64 + 1) * 64
+            print(f"defaulting to vocab_size of {tokenizer_name} to {vocab_size} "
+                  f"({len(tokenizer.vocab)} rounded up for efficiency)")
         else:
             print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
-    model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 21184 if tokenizer_name == 'chinese-character-bert' else 50304
+    model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None \
+        else vocab_size if tokenizer_name in HUGGINGFACE_TOKENIZERS.keys() \
+        else 50304
     gptconf = Config(**model_args)
     model = Model(gptconf)
 elif init_from == 'resume':

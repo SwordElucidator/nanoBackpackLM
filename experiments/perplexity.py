@@ -2,7 +2,8 @@ import numpy as np
 import torch
 from transformers import GPT2LMHeadModel
 
-from experiments.loader import eval_iters, evaluation_data_path, load_model, get_batch, device_type, dtype
+from experiments.loader import eval_iters, evaluation_data_path, load_model, get_batch, device_type, dtype, \
+    data_bin_dtype
 from contextlib import nullcontext
 
 
@@ -16,7 +17,7 @@ def estimate_perplexity(from_huggingface_model_name=None):
         model = GPT2LMHeadModel.from_pretrained(from_huggingface_model_name)
     else:
         model = load_model()[0]
-    eval_data = np.memmap(evaluation_data_path, dtype=np.uint16, mode='r')
+    eval_data = np.memmap(evaluation_data_path, dtype=getattr(np, data_bin_dtype), mode='r')
     model.eval()
     losses = torch.zeros(eval_iters)
     for k in range(eval_iters):

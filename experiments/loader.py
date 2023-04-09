@@ -19,6 +19,7 @@ tokenizer_name = 'gpt2'
 dtype = 'bfloat16'
 bias = False
 strict = True
+data_bin_dtype = 'uint16'
 
 # other params
 evaluation_data_path = 'data/clue_small/evaluation.bin'

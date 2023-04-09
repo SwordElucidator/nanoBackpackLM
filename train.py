@@ -51,6 +51,7 @@ dataset = 'openwebtext'
 gradient_accumulation_steps = 1 # used to simulate larger batch sizes
 batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
+data_bin_dtype = 'uint16'
 # model
 model_name = 'backpack-lm'  # another is "gpt2"
 n_layer = 12
@@ -113,8 +114,8 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 # poor man's data loader
 data_dir = os.path.join('data', dataset)
-train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
-val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=getattr(np, data_bin_dtype), mode='r')
+val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=getattr(np, data_bin_dtype), mode='r')
 
 
 def get_batch(split):
@@ -227,6 +228,7 @@ if compile:
 if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
 
+
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
 def estimate_loss():
@@ -243,6 +245,7 @@ def estimate_loss():
     model.train()
     return out
 
+
 # learning rate decay scheduler (cosine with warmup)
 def get_lr(it):
     # 1) linear warmup for warmup_iters steps
@@ -256,6 +259,7 @@ def get_lr(it):
     assert 0 <= decay_ratio <= 1
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff ranges 0..1
     return min_lr + coeff * (learning_rate - min_lr)
+
 
 # logging
 if wandb_log and master_process:
@@ -282,8 +286,8 @@ def save_checkpoint(ckpt_file_name):
     print(f"saving checkpoint to {out_dir}")
     torch.save(cp, os.path.join(out_dir, ckpt_file_name))
 
-while True:
 
+while True:
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
     for param_group in optimizer.param_groups:

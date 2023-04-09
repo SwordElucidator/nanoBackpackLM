@@ -14,6 +14,7 @@ from model import GPTConfig, GPT
 model_name = 'backpack-lm'
 batch_size = 12
 block_size = 1024
+data_bin_dtype = 'uint16'
 bias = False
 real_data = True
 seed = 1337
@@ -36,7 +37,7 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 if real_data:
     dataset = 'openwebtext'
     data_dir = os.path.join('data', dataset)
-    train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+    train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=getattr(np, data_bin_dtype), mode='r')
     def get_batch(split):
         data = train_data # note ignore split in benchmarking script
         ix = torch.randint(len(data) - block_size, (batch_size,))

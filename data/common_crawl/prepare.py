@@ -11,14 +11,12 @@ num_proc = 8
 
 
 langs = ['af', 'am']
+path = 'data/common_crawl/'
 
 
-def cc_language_based_generator(lang):
-    path = 'data/common_crawl/'
-    f_path = os.path.join(path, f"{lang}.txt")
-    with open(f_path, 'r') as f:
-        for line in f.readlines():
-            yield {'text': line.strip()}
+def cc_language_based_generator(f):
+    for line in f.readlines():
+        yield {'text': line.strip()}
 
 
 def process(example):
@@ -29,10 +27,14 @@ def process(example):
 
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 for lang in langs:
-    dataset = Dataset.from_generator(partial(cc_language_based_generator, lang))
+    f_path = os.path.join(path, f"{lang}.txt")
+    with open(f_path, 'r') as f:
+        dataset = Dataset.from_generator(partial(cc_language_based_generator, f))
+    _eval_size = 10000 if dataset.num_rows * 0.001 < 10000 else 0.001
+    _eval_size = 5000 if dataset.num_rows * 0.0005 < 5000 else 0.0005
     dataset = dataset.train_test_split(test_size=0.001, seed=2357, shuffle=True)  # keep for eval
     eval_set = dataset['test']
-    split_dataset = dataset["train"].train_test_split(test_size=0.0005, seed=2357, shuffle=True)
+    split_dataset = dataset["train"].train_test_split(test_size=0.0005005, seed=2357, shuffle=True)
     split_dataset['val'] = split_dataset.pop('test')
     split_dataset['evaluation'] = eval_set
 

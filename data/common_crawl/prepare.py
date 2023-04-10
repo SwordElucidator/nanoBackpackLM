@@ -10,7 +10,7 @@ from functools import partial
 num_proc = 8
 
 
-langs = ['af', 'am']
+langs = ['am', 'af']
 path = 'data/common_crawl/'
 
 
@@ -31,10 +31,10 @@ for lang in langs:
     with open(f_path, 'r') as f:
         dataset = Dataset.from_generator(partial(cc_language_based_generator, f))
     _eval_size = 10000 if dataset.num_rows * 0.001 < 10000 else 0.001
-    _eval_size = 5000 if dataset.num_rows * 0.0005 < 5000 else 0.0005
-    dataset = dataset.train_test_split(test_size=0.001, seed=2357, shuffle=True)  # keep for eval
+    _val_size = 5000 if dataset.num_rows * 0.0005 < 5000 else 0.0005
+    dataset = dataset.train_test_split(test_size=_eval_size, seed=2357, shuffle=True)  # keep for eval
     eval_set = dataset['test']
-    split_dataset = dataset["train"].train_test_split(test_size=0.0005005, seed=2357, shuffle=True)
+    split_dataset = dataset["train"].train_test_split(test_size=_val_size, seed=2357, shuffle=True)
     split_dataset['val'] = split_dataset.pop('test')
     split_dataset['evaluation'] = eval_set
 

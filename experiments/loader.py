@@ -4,11 +4,9 @@ import pickle
 import numpy as np
 import torch
 import tiktoken
-from transformers import BertTokenizer
-
 from backpack import BackpackLM, BackpackLMConfig
 from model import GPT, GPTConfig
-from utils import HUGGINGFACE_TOKENIZERS
+from task_utils import HUGGINGFACE_TOKENIZERS
 
 # -----------------------------------------------------------------------------
 out_dir = 'out'  # ignored if init_from is not 'resume'

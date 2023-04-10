@@ -10,7 +10,7 @@ from transformers import BertTokenizer
 
 from backpack import BackpackLM, BackpackLMConfig
 from model import GPTConfig, GPT
-from utils import HUGGINGFACE_TOKENIZERS
+from task_utils import HUGGINGFACE_TOKENIZERS
 
 # -----------------------------------------------------------------------------
 model_name = 'backpack-lm'

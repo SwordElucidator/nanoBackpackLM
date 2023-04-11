@@ -114,9 +114,6 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 # poor man's data loader
 data_dir = os.path.join('data', dataset)
-train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=getattr(np, data_bin_dtype), mode='r')
-val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=getattr(np, data_bin_dtype), mode='r')
-
 
 if dataset == 'common_crawl':
     alpha = 0.3
@@ -124,6 +121,9 @@ if dataset == 'common_crawl':
         dataset, data_bin_dtype, alpha, block_size, batch_size, device
     )
 else:
+    train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=getattr(np, data_bin_dtype), mode='r')
+    val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=getattr(np, data_bin_dtype), mode='r')
+
     def get_batch(split):
         data = train_data if split == 'train' else val_data
         ix = torch.randint(len(data) - block_size, (batch_size,))

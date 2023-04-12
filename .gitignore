@@ -153,3 +153,8 @@ cython_debug/
 data/clue_small/*
 wandb/*
 .DS_Store
+*/ckpt.pt
+*/*/*.pkl
+*/*/*.bin
+*/*/*.txt
+*/*/*.json

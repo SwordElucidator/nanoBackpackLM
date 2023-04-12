@@ -35,7 +35,7 @@ def chinese_wcpc_test(huggingface_gpt=False, k=3):
                         ',', '，', '。', '[UNK]', '！', '!', '；', ';', '?', '？', '[ U N K ]', '"', '”', '“', '、',
                         '：', ':', '「', '」', '【', '】', '`', '…', '……'
                     ] and index != 100:
-                        new_beam.append((torch.cat((tokens, torch.tensor([index]))), new_prob * prob))
+                        new_beam.append((torch.cat((tokens, torch.tensor([index]).to(device))), new_prob * prob))
             length -= 1
             beam_search = sorted(new_beam, key=lambda x: -x[1])[:k]
         print(f'right word: {true_word}')
@@ -76,14 +76,14 @@ def chinese_wcpc_test_v2(huggingface_gpt=False, k=3, max_holding_beam=10):
                         ',', '，', '。', '[UNK]', '！', '!', '；', ';', '?', '？', '[ U N K ]', '"', '”', '“', '、',
                         '：', ':', '「', '」', '【', '】', '`', '…', '……'
                     ] and index != 100:
-                        new_beam.append((torch.cat((tokens, torch.tensor([index]))), new_log_prob + log_prob))
+                        new_beam.append((torch.cat((tokens, torch.tensor([index]).to(device))), new_log_prob + log_prob))
             length -= 1
             beam_search = sorted(new_beam, key=lambda x: -x[1])[:max_holding_beam]
 
         # last words punishment
         last_words = text[len(start) + text.count('<mask>') * 6:]
         for i in range(len(last_words)):
-            additional_tokens = torch.tensor(encode(last_words[:i])[1: -1], dtype=torch.int64)
+            additional_tokens = torch.tensor(encode(last_words[:i])[1: -1], dtype=torch.int64).to(device)
             new_beam = []
             for tokens, log_prob in beam_search:
                 logits = model(torch.cat((tokens, additional_tokens))[None, ...])[0][0, -1, :]
@@ -106,6 +106,6 @@ def chinese_wcpc_test_v2(huggingface_gpt=False, k=3, max_holding_beam=10):
         print()
     return top1 / len(dev_set), top3 / len(dev_set)
 
-
+# (0.029417857882742905, 0.06608659622954216)
 if __name__ == '__main__':
-    print(chinese_wcpc_test(huggingface_gpt=False))
+    print(chinese_wcpc_test_v2(huggingface_gpt=False))

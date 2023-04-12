@@ -23,7 +23,7 @@ def estimate_perplexity(from_huggingface_model_name=None):
         X, Y = get_batch(eval_data)
         with ctx:
             if from_huggingface_model_name:
-                loss = model(input_ids=X, labels=Y).loss
+                loss = model(input_ids=X, labels=X).loss
             else:
                 _, loss = model(X, Y)
         losses[k] = torch.exp(loss).item()

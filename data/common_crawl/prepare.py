@@ -27,6 +27,8 @@ def process(example):
 
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
 for lang in langs:
+    zip_path = os.path.join(path, f"{lang}.txt.xz")
+    os.system(f"xz -d {zip_path}")  # unzip
     f_path = os.path.join(path, f"{lang}.txt")
     with open(f_path, 'r') as f:
         dataset = Dataset.from_generator(partial(cc_language_based_generator, f))
@@ -58,3 +60,4 @@ for lang in langs:
             arr[idx: idx + example['len']] = example['ids']
             idx += example['len']
         arr.flush()
+    os.remove(f_path)  # delete txt

@@ -7,10 +7,9 @@ from transformers import AutoTokenizer
 from functools import partial
 
 
-num_proc = 8
+num_proc = 40
 
 
-langs = ['am', 'af']
 path = 'data/common_crawl/'
 
 
@@ -26,19 +25,27 @@ def process(example):
 
 
 tokenizer = AutoTokenizer.from_pretrained('xlm-roberta-base')
-for lang in langs:
-    zip_path = os.path.join(path, f"{lang}.txt.xz")
-    os.system(f"xz -d {zip_path}")  # unzip
+
+for f_name in os.listdir(path):
+    if f_name.endswith('txt.xz'):
+        lang = f_name.replace('.txt.xz', '')
+        zip_path = os.path.join(path, f"{lang}.txt.xz")
+        os.system(f"xz -d {zip_path}")  # unzip
+    elif f_name.endswith('.txt'):
+        lang = f_name.replace('.txt', '')
+    else:
+        continue
     f_path = os.path.join(path, f"{lang}.txt")
     with open(f_path, 'r') as f:
         dataset = Dataset.from_generator(partial(cc_language_based_generator, f))
     _eval_size = 10000 if dataset.num_rows * 0.001 < 10000 else 0.001
     _val_size = 5000 if dataset.num_rows * 0.0005 < 5000 else 0.0005
-    dataset = dataset.train_test_split(test_size=_eval_size, seed=2357, shuffle=True)  # keep for eval
-    eval_set = dataset['test']
-    split_dataset = dataset["train"].train_test_split(test_size=_val_size, seed=2357, shuffle=True)
+    dataset = dataset.train_test_split(test_size=_eval_size + _val_size, seed=2357, shuffle=dataset.num_rows < 10000000)  # we assume that very large corpus is already "shuffled"
+    train_set = dataset['train']
+    split_dataset = dataset["test"].train_test_split(test_size=_val_size / (_val_size + _eval_size), seed=2357, shuffle=False)
     split_dataset['val'] = split_dataset.pop('test')
-    split_dataset['evaluation'] = eval_set
+    split_dataset['evaluation'] = split_dataset.pop('train')
+    split_dataset['train'] = train_set
 
     # tokenize the dataset
     tokenized = split_dataset.map(

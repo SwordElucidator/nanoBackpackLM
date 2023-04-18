@@ -121,6 +121,13 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 data_dir = os.path.join('data', dataset)
 
 if dataset == 'common_crawl':
+    print(f"""working on common crawl. will use the following parameters: 
+    huge_pack_dir={huge_pack_dir}
+    data_bin_dtype={data_bin_dtype}
+    xlm_alpha={xlm_alpha}
+    block_size={block_size}
+    batch_size={batch_size}
+    """)
     get_batch = get_batch_function_for_multilingual_training(
         dataset, huge_pack_dir, data_bin_dtype, xlm_alpha, block_size, batch_size, device
     )

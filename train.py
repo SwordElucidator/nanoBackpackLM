@@ -48,6 +48,10 @@ wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 # data
 dataset = 'openwebtext'
+# additional data
+huge_pack_dir = ''
+xlm_alpha = 0.3
+
 gradient_accumulation_steps = 1 # used to simulate larger batch sizes
 batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
 block_size = 1024
@@ -117,9 +121,8 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 data_dir = os.path.join('data', dataset)
 
 if dataset == 'common_crawl':
-    alpha = 0.3
     get_batch = get_batch_function_for_multilingual_training(
-        dataset, data_bin_dtype, alpha, block_size, batch_size, device
+        dataset, huge_pack_dir, data_bin_dtype, xlm_alpha, block_size, batch_size, device
     )
 else:
     train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=getattr(np, data_bin_dtype), mode='r')

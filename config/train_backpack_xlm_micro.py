@@ -30,3 +30,6 @@ weight_decay = 1e-1
 out_dir = 'backpack_xlm'
 dataset = 'common_crawl'
 tokenizer_name = 'xlm-250k'
+huge_pack_dir = '/home/ubuntu/workspace/ai/cc100'  # FIX WITH YOUR PATH
+data_bin_dtype = 'uint32'
+xlm_alpha = 0.3

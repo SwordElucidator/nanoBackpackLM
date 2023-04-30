@@ -21,6 +21,7 @@ data_bin_dtype = 'uint16'
 
 # other params
 evaluation_data_path = 'data/clue_small/evaluation.bin'
+evaluation_data_dirs = 'data/common_crawl'
 eval_iters = 500
 block_size = 1024
 batch_size = 12
@@ -82,8 +83,11 @@ def load_model(force_model=None, force_dir=None):
     return model, encode, decode
 
 
-def get_batch(data):
-    ix = torch.randint(len(data) - block_size, (batch_size,))
+def get_batch(data, sample_func=None):
+    if sample_func:
+        ix = sample_func(data, block_size, batch_size)
+    else:
+        ix = torch.randint(len(data) - block_size, (batch_size,))
     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
     if device_type == 'cuda':

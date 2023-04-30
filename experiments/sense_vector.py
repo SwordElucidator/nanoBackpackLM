@@ -26,8 +26,10 @@ class SenseVectorExperiment(object):
         self.word2id = {word: self.encode(word)[1] for word in self.id2word.values()}
 
     @torch.no_grad()
-    def sense_projection(self, word, k=5):
+    def sense_projection(self, word, k=5, weight=None):
         senses = self.sense_vector[self.word2id[word]].to(device)
+        if weight is not None:
+            senses = senses * weight.unsqueeze(1)
         output = self.model.backpack.logit_layer(senses)
         topk = torch.topk(output, k, dim=-1).indices.to('cpu').numpy()
         return [[self.id2word[i] for i in row] for row in topk]
@@ -107,9 +109,9 @@ class SenseVectorExperiment(object):
         new_sense = contextualized_sense[-1, -1, :, :]
         return new_sense
 
-    def generate_with(self, words, length=10):
+    def generate_with(self, words, length=10, temperature=0.01):
         start_words = torch.tensor(self.encode(words)[1:- 1], dtype=torch.long, device=device)[None, ...]
-        return self.decode(self.model.generate(start_words, length)[0].tolist())
+        return self.decode(self.model.generate(start_words, length, temperature=temperature)[0].tolist())
 
     def next_topk_words(self, words, k=5):
         start_words = torch.tensor(self.encode(words)[1:- 1], dtype=torch.long, device=device)[None, ...]
@@ -339,9 +341,24 @@ class SenseVectorExperiment(object):
                     model.lm_head.weight[to_modify_indices[0]] = to_modify
             return total_diff / len(prompts)
 
+    def active_context_weight(self, words):
+        """
+        find the most active senses in generation
+        """
+        start_words = torch.tensor(self.encode(words)[0:- 1], dtype=torch.long, device=device)[None, ...]
+        weight = self.model.backpack.contextualization_layer.contextualization_weight_func(start_words)
+        return weight[0, :, -1, :].T
+
 
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
+    w_en = ex.active_context_weight("It is sensible")[3]
+    w_fr = ex.active_context_weight("Il est sensible")[3]
+    print(w_en)
+    print(w_fr)
+    ex.sense_projection('sensible', weight=w_en)
+    ex.sense_projection('sensible', weight=w_fr)
+
     # words = ['兵', '警', '师', '牧', '护']
     # for word in words:
     #     print(word)
@@ -382,11 +399,11 @@ if __name__ == '__main__':
     # print(ex.alpha_modification_generation('在这人间里，充满了', 20, None))
     # print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [4, 1]))
     # print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [1, 4]))
-    test_words = ['丘', '撒', '堡', '粒', '石', '海', '人', '球', '晒']
-    regular = ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [1, 1])
-
-    print(ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [4, 1]) / regular)
-    print(ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [1, 4]) / regular)
+    # test_words = ['丘', '撒', '堡', '粒', '石', '海', '人', '球', '晒']
+    # regular = ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [1, 1])
+    #
+    # print(ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [4, 1]) / regular)
+    # print(ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [1, 4]) / regular)
 
     # ex.chinese_word_sim_240_297_test()
     # ex.chinese_word_sim_240_297_test_on_gpt2()

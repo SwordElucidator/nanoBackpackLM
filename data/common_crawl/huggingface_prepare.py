@@ -136,8 +136,15 @@ def process(example):
     return {'ids': ids, 'len': len(ids)}
 
 
+path = 'data/common_crawl/'
+os.listdir(path)
+existed = [i.split('_train')[0] for i in os.listdir(path) if '_train.bin' in i]
+
+
 for lang in langs:
-    dataset = load_dataset("cc100", lang)['train']
+    if lang in existed:
+        continue
+    dataset = load_dataset("cc100", lang=lang)['train']
     _eval_size = 10000 if dataset.num_rows * 0.001 < 10000 else 0.001
     _val_size = 5000 if dataset.num_rows * 0.0005 < 5000 else 0.0005
     dataset = dataset.train_test_split(test_size=_eval_size + _val_size, seed=2357)

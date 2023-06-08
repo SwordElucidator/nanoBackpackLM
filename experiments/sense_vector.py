@@ -26,10 +26,8 @@ class SenseVectorExperiment(object):
         self.word2id = {word: self.encode(word)[1] for word in self.id2word.values()}
 
     @torch.no_grad()
-    def sense_projection(self, word, k=5, weight=None):
+    def sense_projection(self, word, k=5):
         senses = self.sense_vector[self.word2id[word]].to(device)
-        if weight is not None:
-            senses = senses * weight.unsqueeze(1)
         output = self.model.backpack.logit_layer(senses)
         topk = torch.topk(output, k, dim=-1).indices.to('cpu').numpy()
         return [[self.id2word[i] for i in row] for row in topk]
@@ -116,6 +114,11 @@ class SenseVectorExperiment(object):
     def next_topk_words(self, words, k=5):
         start_words = torch.tensor(self.encode(words)[1:- 1], dtype=torch.long, device=device)[None, ...]
         return torch.topk(self.model(start_words)[0][0, -1, :], k=k)
+
+    def next_word_contextualization(self, words):
+        start_words = torch.tensor(self.encode(words)[:- 1], dtype=torch.long, device=device)[None, ...]
+        alpha = self.model.backpack.contextualization_layer.contextualization_weight_func(start_words)
+        return alpha[0, :, -1, :]
 
     def word_composition(self, word, pieces):
         out = {}
@@ -352,13 +355,16 @@ class SenseVectorExperiment(object):
 
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
-    w_en = ex.active_context_weight("It is sensible")[3]
-    w_fr = ex.active_context_weight("Il est sensible")[3]
-    print(w_en)
-    print(w_fr)
-    ex.sense_projection('sensible', weight=w_en)
-    ex.sense_projection('sensible', weight=w_fr)
+    w_en = ex.active_context_weight("It is sensible")
+    w_fr = ex.active_context_weight("Il est sensible")
+    w_en_pl = ex.active_context_weight("The plant is")
+    w_cy_pl = ex.active_context_weight("Mae'r plant yn")
 
+    ex.sense_projection("sensible", k=10)[torch.argmax(-w_en[3] + w_fr[3])]
+    ex.sense_projection("plant", k=10)[torch.argmax(-w_en_pl[2] + w_cy_pl[3])]
+
+    # about the next word prediction
+    [ex.id2word[w] for w in ex.next_topk_words("Il est sensible", k=20).indices.detach().numpy()]
     # words = ['兵', '警', '师', '牧', '护']
     # for word in words:
     #     print(word)

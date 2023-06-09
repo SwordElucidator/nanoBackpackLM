@@ -6,22 +6,20 @@ from tqdm import tqdm
 import numpy as np
 import tiktoken
 from datasets import load_dataset # huggingface datasets
-from transformers import AutoTokenizer
+from transformers import BertTokenizer
 
 # number of workers in .map() call
 # good number to use is ~order number of cpu cores // 2
 num_proc = 8
 
 # takes 54GB in huggingface .cache dir, about 8M documents (8,013,769)
-dataset = load_dataset("TigerResearch/pretrain_zh")
-
-# owt by default only contains the 'train' split, so create a test split
-split_dataset = dataset["train"].train_test_split(test_size=0.0005, seed=2357, shuffle=True)
+dataset = load_dataset("TigerResearch/pretrain_zh")['train']
+dataset = dataset.train_test_split(test_size=0.001, seed=2357, shuffle=True)
+split_dataset = dataset["train"].train_test_split(test_size=0.0005, seed=2357, shuffle=False)
 split_dataset['val'] = split_dataset.pop('test') # rename the test split to val
 
 
-tokenizer = AutoTokenizer.from_pretrained('TigerResearch/tigerbot-180b-research', padding_side="left", truncation_side='left')
-
+tokenizer = BertTokenizer.from_pretrained("uer/gpt2-chinese-cluecorpussmall")
 
 def process(example):
     ids = tokenizer.encode(example['content'])
@@ -32,7 +30,7 @@ def process(example):
 # tokenize the dataset
 tokenized = split_dataset.map(
     process,
-    remove_columns=['text'],
+    remove_columns=['dataType', 'title', 'content', 'uniqueKey', 'titleUkey', 'id'],
     desc="tokenizing the splits",
     num_proc=num_proc,
 )

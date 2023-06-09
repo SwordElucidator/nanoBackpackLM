@@ -26,5 +26,5 @@ log_interval = 10
 weight_decay = 1e-1
 
 out_dir = 'backpack_tigerbot_small'
-dataset = 'backpack_tigerbot_small'
-tokenizer_name = 'tigerbot'
+dataset = 'tigerbot'
+tokenizer_name = 'chinese-character-bert'

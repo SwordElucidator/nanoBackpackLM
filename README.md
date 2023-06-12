@@ -92,6 +92,38 @@ Not bad for ~3 minutes on a CPU, for a hint of the right character gestalt. If y
 
 Finally, on Apple Silicon Macbooks and with a recent PyTorch version make sure to add `--device mps` (short for "Metal Performance Shaders"); PyTorch then uses the on-chip GPU that can *significantly* accelerate training (2-3X) and allow you to use larger networks. See nanoGPT [Issue 28](https://github.com/karpathy/nanoGPT/issues/28) for more.
 
+### senses
+
+Let's check the easiest example above. You can use the helper functions in `experiments/sense_vector.py` to help you with analysing the senses.
+
+For example, with the minimum shakespeare model, you can run
+
+```
+$ python experiments/sense_vector.py --device=cpu --compile=False --out_dir=out-shakespeare-char
+```
+
+In this example, it calls `sense_projection` function to predict the next most possible words based on each senses of the given words. The output is like
+
+```
+# a
+[['t', 'l', 'r', 'n', ' '], ['y', 'k', 'n', 'r', 't'], ['e', 't', 'm', 'o', 'a'], ['d', 'r', 'v', ' ', '\n']]
+# e
+[['e', 'a', 'v', 'x', 'n'], ['n', 'd', 'r', ' ', 's'], ['\n', 's', 'v', 't', '.'], ['.', ':', ',', 'r', ' ']]
+# c
+[[' ', ',', 'k', '\n', '.'], ['h', 'e', 'k', 'o', 'a'], ['n', 'm', 'e', 'i', 's'], ['l', 'u', 'm', 'a', 'o']]
+# s
+[[' ', ',', '\n', 'e', ';'], ['h', 't', 's', 'e', 'w'], ['y', '.', '\n', ':', ','], ['p', 'l', 'e', 'c', 'r']]
+# t
+[['e', 'h', 'o', 'r', ' '], ['h', 'w', 'H', 'a', 'I'], [' ', '\n', '-', ':', '.'], ['h', 'o', 't', 'u', 's']]
+```
+
+Although this model is very very micro and only has four senses, let's have a look! 
+Letter "a" tends to predict "d" to make "...ad..." on Sense 3, while "e" tends to end the sentence with ".". For "c", "s", "t", very common patterns "cl...", "sp...", "th..." are most predicted.
+
+If you have 16, 64, or even more senses, you will find each sense represents or tends to predict some specific patterns / meanings of the word!
+
+
+
 ## train BackpackLM
 
 A more serious deep learning professional may be more interested in pretraining BackpackLM. So here we go - we first tokenize the dataset, in this case the [OpenWebText](https://openwebtext2.readthedocs.io/en/latest/), an open reproduction of OpenAI's (private) WebText:

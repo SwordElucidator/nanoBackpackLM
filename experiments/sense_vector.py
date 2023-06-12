@@ -23,7 +23,10 @@ class SenseVectorExperiment(object):
         self.word_vectors = self.model.wte(torch.arange(self.vocab_size).to(device))
         self.n_sense_vectors = self.sense_vector.shape[1]
         self.id2word = {k: self.decode([k]) for k in range(0, self.vocab_size)}
-        self.word2id = {word: self.encode(word)[1] for word in self.id2word.values()}
+        try:
+            self.word2id = {word: self.encode(word)[1] for word in self.id2word.values()}
+        except IndexError:  # shakespeare raw encoder
+            self.word2id = {word: self.encode(word)[0] for word in self.id2word.values()}
 
     @torch.no_grad()
     def sense_projection(self, word, k=5):
@@ -355,12 +358,15 @@ class SenseVectorExperiment(object):
 
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
-    words = ['兵', '警', '师', '牧', '护']
+    words = ['a', 'e', 'c', 's', 't']
     for word in words:
-        print(word)
-        he, her = ex.bias_check_on_sense_vector(word, ['他', '她'])
-        # max_diff = torch.argmax(torch.abs(he - her))
-        print(torch.topk((torch.abs(he - her)), k=3))
+        print(ex.sense_projection(word))
+    # words = ['兵', '警', '师', '牧', '护']
+    # for word in words:
+    #     print(word)
+    #     he, her = ex.bias_check_on_sense_vector(word, ['他', '她'])
+    #     # max_diff = torch.argmax(torch.abs(he - her))
+    #     print(torch.topk((torch.abs(he - her)), k=3))
     # characters = ['士兵', '伞兵', '警察',  '交警', '清洁工', '教师']
     # combined_words = ['士兵', '伞兵', '警察',  '交警', '清洁工', '教师']
     # prompts = [

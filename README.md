@@ -9,7 +9,7 @@ It is a simple repository for training/finetuning medium-sized Backpacks inspire
 
 The model is implemented very easy and simple, so feel free to hack to your needs. You can train new models from scratch, or finetune pretrained checkpoints.
 
-I would like to appreciate the author of Backpack LM and the head TA of CS224N 2023, [John Hewitt](https://nlp.stanford.edu/~johnhew/), for his great help and support on this project. I would also like to appreciate the author of nanoGPT, [Andrej Karpathy](https://karpathy.ai/) for the great codebase of nanoGPT.
+I would like to appreciate the author of Backpack LM and the head TA of CS224N 2023, [John Hewitt](https://nlp.stanford.edu/~johnhew/), for his great help and support on this project. I would also like to appreciate the author of nanoGPT, [Andrej Karpathy](https://karpathy.ai/), for his great codebase of nanoGPT.
 
 ## install
 

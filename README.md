@@ -3,7 +3,9 @@
 
 ![nanoBackpackLM](assets/backpack-process.gif)
 
-This repo is the implementation of the Backpack Language Model used in Stanford CS224N Winter 2023 Best Custom Project [Nano Backpack Language Model on Chinese Characters](http://web.stanford.edu/class/cs224n/project.html). The Backpack LM structure is based on the paper [Backpack Language Models](https://arxiv.org/abs/2305.16765). Here is the Official Github Repo of [Backpack LM](https://github.com/john-hewitt/backpacks-flash-attn).
+This repo is the implementation of the Backpack Language Model used in Stanford CS224N Winter 2023 Best Custom Project [Nano Backpack Language Model on Chinese Characters](http://web.stanford.edu/class/cs224n/project.html). You can find my final paper [here](https://drive.google.com/file/d/1cDrR69B9jvzWn4eDraucxq0S3ZI_jNJe/view?usp=sharing). 
+
+The Backpack LM is based on the paper [Backpack Language Models](https://arxiv.org/abs/2305.16765). Here is the Official Github Repo of [Backpack LM](https://github.com/john-hewitt/backpacks-flash-attn).
 
 It is a simple repository for training/finetuning medium-sized Backpacks inspired by and based on [nanoGPT](https://github.com/karpathy/nanoGPT).
 
@@ -92,7 +94,7 @@ Not bad for ~3 minutes on a CPU, for a hint of the right character gestalt. If y
 
 Finally, on Apple Silicon Macbooks and with a recent PyTorch version make sure to add `--device mps` (short for "Metal Performance Shaders"); PyTorch then uses the on-chip GPU that can *significantly* accelerate training (2-3X) and allow you to use larger networks. See nanoGPT [Issue 28](https://github.com/karpathy/nanoGPT/issues/28) for more.
 
-### senses
+### Sense Vectors on characters
 
 Let's check the easiest example above. You can use the helper functions in `experiments/sense_vector.py` to help you with analysing the senses.
 
@@ -188,3 +190,36 @@ If you'd like to sample from a model you trained, use the `--out_dir` to point t
 
 ## efficiency notes
 Note that the code by default uses [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). At the time of writing (Dec 29, 2022) this makes `torch.compile()` available in the nightly release. The improvement from the one line of code is noticeable, e.g. cutting down iteration time from ~250ms / iter to 135ms / iter. Nice work PyTorch team!
+
+## Sense Vectors on Chinese Characters
+
+If you are familiar with Chinese Characters, you could try to use [Backpack-clue-small](https://drive.google.com/file/d/1KwetsldXQ2QweP8C6lXrrYjaJFJ9Fpga/view?usp=sharing) model, then:
+
+Modify the sense_vector.py's main function with the following code:
+```python
+    ex = SenseVectorExperiment()
+    words = ['天', '武', '快', '冯']  # sky, military, fast, surname "Feng"
+    for word in words:
+        print(ex.sense_projection(word)[9])
+```
+
+run the file with 
+```
+$ python experiments/sense_vector.py --device=cpu --compile=False --out_dir=clue_small --tokenizer_name=chinese-character-bert --strict=False
+```
+ Then You will get the top character prediction of the next word based on Sense Vector 9 of the four characters:
+ ```
+['敌', '赋', '线', '賦', '真']  # 天敌 (natural enemy)  天赋 (talent) 天线 (antenna) 天賦 (talent) 天真 (naive)
+['士', '断', '藏', '器', '珅']  # 武士 (Samurai)  武断 (Arbitrary)  武藏 (Musashi) 武器 (Weapon) 武坤 (Name: Wu Kun)
+['递', '艇', '乐', '婿', '速']  # 快递 (Express) 快艇 (Speedboat) 快乐 (happy) 快婿 (son-in-law) 快速 (fast)
+['辉', '·', '薪', '氏', '哧']  # 冯辉 (Name: Feng Hui) 冯· (Name: Feng, ) 冯薪 (Name: Feng Xin) 冯氏 (Mr. Feng)  冯哧 (Well, I don't what it is)
+```
+
+and on another Sense Vector 5, you will get:
+```
+['噜', '津', '晚', '夜', '使']
+['夷', '陟', '汉', '则', '术']
+['步', '脚', '节', '速', '凋']
+['仑', '轲', '骥', '褚', '巩']
+```
+Definitely the Sense Vector 9 is about the word composition. And Sense 5 are more or less about the some higher level character relationships.

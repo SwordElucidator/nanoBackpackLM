@@ -355,22 +355,12 @@ class SenseVectorExperiment(object):
 
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
-    w_en = ex.active_context_weight("It is sensible")
-    w_fr = ex.active_context_weight("Il est sensible")
-    w_en_pl = ex.active_context_weight("The plant is")
-    w_cy_pl = ex.active_context_weight("Mae'r plant yn")
-
-    ex.sense_projection("sensible", k=10)[torch.argmax(-w_en[3] + w_fr[3])]
-    ex.sense_projection("plant", k=10)[torch.argmax(-w_en_pl[2] + w_cy_pl[3])]
-
-    # about the next word prediction
-    [ex.id2word[w] for w in ex.next_topk_words("Il est sensible", k=20).indices.detach().numpy()]
-    # words = ['兵', '警', '师', '牧', '护']
-    # for word in words:
-    #     print(word)
-    #     he, her = ex.bias_check_on_sense_vector(word, ['他', '她'])
-    #     # max_diff = torch.argmax(torch.abs(he - her))
-    #     print(torch.topk((torch.abs(he - her)), k=3))
+    words = ['兵', '警', '师', '牧', '护']
+    for word in words:
+        print(word)
+        he, her = ex.bias_check_on_sense_vector(word, ['他', '她'])
+        # max_diff = torch.argmax(torch.abs(he - her))
+        print(torch.topk((torch.abs(he - her)), k=3))
     # characters = ['士兵', '伞兵', '警察',  '交警', '清洁工', '教师']
     # combined_words = ['士兵', '伞兵', '警察',  '交警', '清洁工', '教师']
     # prompts = [

@@ -32,5 +32,5 @@ def estimate_perplexity(from_huggingface_model_name=None):
 
 
 if __name__ == "__main__":
-    # print(f'perplexity is {estimate_perplexity()}')
-    print(f'perplexity is {estimate_perplexity("uer/gpt2-chinese-cluecorpussmall")}')
+    print(f'perplexity is {estimate_perplexity()}')
+    # print(f'perplexity is {estimate_perplexity("uer/gpt2-chinese-cluecorpussmall")}')

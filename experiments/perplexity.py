@@ -1,12 +1,9 @@
 import numpy as np
 import torch
 from transformers import GPT2LMHeadModel
-try:
-    from experiments.loader import eval_iters, evaluation_data_path, load_model, get_batch, device_type, dtype, \
-        data_bin_dtype
-except ImportError:
-    from loader import eval_iters, evaluation_data_path, load_model, get_batch, device_type, dtype, \
-        data_bin_dtype
+
+from experiments.loader import eval_iters, evaluation_data_path, load_model, get_batch, device_type, dtype, \
+    data_bin_dtype
 from contextlib import nullcontext
 
 

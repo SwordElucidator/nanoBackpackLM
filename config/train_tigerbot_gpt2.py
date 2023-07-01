@@ -4,7 +4,7 @@
 
 wandb_log = True
 wandb_project = 'owt'
-wandb_run_name='gpt2-124M'
+wandb_run_name='gpt2-tigerbot-124M'
 
 # these make the total batch size be ~0.5M
 # 12 batch size * 1024 block size * 5 gradaccum * 8 GPUs = 491,520
@@ -23,3 +23,8 @@ log_interval = 10
 
 # weight decay
 weight_decay = 1e-1
+
+
+out_dir = 'gpt_tigerbot_small'
+dataset = 'tigerbot'
+tokenizer_name = 'chinese-character-bert'

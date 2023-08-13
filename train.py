@@ -66,6 +66,8 @@ dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
 # backpack
 n_sense_vector = 16
+# knapsack
+n_knowledge_multiplier = 4
 # adamw optimizer
 learning_rate = 6e-4 # max learning rate
 max_iters = 600000 # total number of training iterations
@@ -169,6 +171,8 @@ Config = BackpackLMConfig if model_name == 'backpack-lm' else KnapsackLMConfig i
 
 if model_name in ['backpack-lm', 'knapsack-lm']:
     model_args['n_sense_vector'] = n_sense_vector
+if model_name == 'knapsack-lm':
+    model_args['n_knowledge_multiplier'] = n_knowledge_multiplier
 
 if init_from == 'scratch':
     # init a new model from scratch
@@ -201,6 +205,8 @@ elif init_from == 'resume':
         model_args[k] = checkpoint_model_args[k]
     if model_name in ['backpack-lm', 'knapsack-lm']:
         model_args['n_sense_vector'] = checkpoint_model_args['n_sense_vector']
+    if model_name == 'knapsack-lm':
+        model_args['n_knowledge_multiplier'] = checkpoint_model_args['n_knowledge_multiplier']
     # create the model
     gptconf = Config(**model_args)
     model = Model(gptconf)

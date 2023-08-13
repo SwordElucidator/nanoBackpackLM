@@ -31,3 +31,4 @@ weight_decay = 1e-1
 out_dir = 'clue_micro_knapsack'
 dataset = 'clue_small'
 tokenizer_name = 'chinese-character-bert'
+model_name = 'knapsack-lm'

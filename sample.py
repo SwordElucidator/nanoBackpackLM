@@ -9,6 +9,7 @@ import tiktoken
 from transformers import BertTokenizer
 
 from backpack import BackpackLM, BackpackLMConfig
+from knapsack import KnapsackLMConfig, KnapsackLM
 from model import GPTConfig, GPT
 from task_utils import HUGGINGFACE_TOKENIZERS
 
@@ -38,8 +39,8 @@ ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torc
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 
-Model = BackpackLM if model_name == 'backpack-lm' else GPT
-Config = BackpackLMConfig if model_name == 'backpack-lm' else GPTConfig
+Model = BackpackLM if model_name == 'backpack-lm' else KnapsackLM if model_name == 'knapsack-lm' else GPT
+Config = BackpackLMConfig if model_name == 'backpack-lm' else KnapsackLMConfig if model_name == 'knapsack-lm' else GPTConfig
 
 
 # model
@@ -63,6 +64,9 @@ model.eval()
 model.to(device)
 if compile:
     model = torch.compile(model) # requires PyTorch 2.0 (optional)
+
+import pdb
+pdb.set_trace()
 
 # look for the meta pickle in case it is available in the dataset folder
 load_meta = False

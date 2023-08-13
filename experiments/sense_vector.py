@@ -1,6 +1,7 @@
 """
 this file includes several experiments on the sense vector
 """
+import json
 import operator
 from functools import reduce
 
@@ -34,6 +35,18 @@ class SenseVectorExperiment(object):
         output = self.model.backpack.logit_layer(senses)
         topk = torch.topk(output, k, dim=-1).indices.to('cpu').numpy()
         return [[self.id2word[i] for i in row] for row in topk]
+
+    @torch.no_grad()
+    def word_sense(self, words, strategy='avg'):
+        if strategy == 'avg':
+            encoded_words = self.encode(words)[1:-1]
+            sense = reduce(operator.add, (self.sense_vector[id_] for id_ in encoded_words)) / len(encoded_words)
+        elif strategy == 'contextualized':
+            sense = self.get_contextualized_sense(words)
+        else:
+            raise NotImplementedError
+        return sense
+
 
     @torch.no_grad()
     def compositional_sense_projection(self, words, strategy='avg'):
@@ -129,14 +142,16 @@ class SenseVectorExperiment(object):
             alpha = self.model.backpack.contextualization_layer.contextualization_weight_func(
                 torch.tensor(self.encode(piece)[1:- 1], dtype=torch.long, device=device).unsqueeze(0)
             ).squeeze()
-            idx = piece.index(word)
-            related_alpha = alpha[:, :, idx: idx + len(word)]
+            idx = piece.index(word)  # get the index of the word in a sentence piece
+            related_alpha = alpha[:, :, idx: idx + len(word)]  # get the alpha of the word
             composition_ratio = related_alpha / torch.sum(related_alpha, axis=2).unsqueeze(-1)
             usable_composition_ratio = composition_ratio[:, composition_ratio[0, :, -1] > 0]
             out[piece] = usable_composition_ratio  # n_sense_vector, usable_sequence_length, len(word)~ratio
         return out
 
-    def chinese_word_sim_240_297_test(self):  # for sense vector
+    def chinese_word_sim_240_297_test(self, strategy='avg'):  # for sense vector
+        # we need scipy to do this
+        from scipy.stats import spearmanr
         word_sim_type = ['240', '297']
         for x in word_sim_type:
             file = open('data/similarity/wordsim-' + x + '.txt')
@@ -145,20 +160,15 @@ class SenseVectorExperiment(object):
             word_sim_pre = {i: [] for i in range(self.model.config.n_sense_vector)}
             for line in file:
                 word1, word2, val_str = line.strip().split()
-
-                sense1 = self.get_contextualized_sense(word1)
-                sense2 = self.get_contextualized_sense(word2)
-                # encoded1, encoded2 = self.encode(word1)[1:-1], self.encode(word2)[1:-1]
-                # sense1 = reduce(operator.add, (self.sense_vector[c] for c in encoded1)) / len(encoded1)
-                # sense2 = reduce(operator.add, (self.sense_vector[c] for c in encoded2)) / len(encoded2)
-
+                sense1 = self.word_sense(word1, strategy)
+                sense2 = self.word_sense(word2, strategy)
                 word_sim_std.append(float(val_str))
-                # cos_sim = np.dot(sense1, sense2)
                 cos_sim = torch.sum(sense1 * sense2, -1).detach().numpy()
                 for i, sim in enumerate(cos_sim):
                     word_sim_pre[i].append(sim)
             for i in range(self.model.config.n_sense_vector):
-                corr_coef = np.corrcoef(word_sim_std, word_sim_pre[i])[0, 1]
+                corr_coef = spearmanr(word_sim_std, word_sim_pre[i]).correlation
+                # corr_coef = np.corrcoef(word_sim_std, word_sim_pre[i])[0, 1]
                 print(f'WordSim-{x} sense:{i + 1} Score:{corr_coef}')
             file.close()
 
@@ -171,6 +181,7 @@ class SenseVectorExperiment(object):
         return model.transformer.wte
 
     def chinese_word_sim_240_297_test_on_gpt2(self, name='clue_micro_gpt2', from_huggingface=False):
+        from scipy.stats import spearmanr
         if from_huggingface:
             wte_layer = self._get_huggingface_wte_layer(name)
         else:
@@ -191,7 +202,8 @@ class SenseVectorExperiment(object):
                 # cos_sim = np.dot(sense1, sense2)
                 cos_sim = float(torch.sum(sense1 * sense2, -1).detach().numpy())
                 word_sim_pre.append(cos_sim)
-            corr_coef = np.corrcoef(word_sim_std, word_sim_pre)[0, 1]
+            # corr_coef = np.corrcoef(word_sim_std, word_sim_pre)[0, 1]
+            corr_coef = spearmanr(word_sim_std, word_sim_pre).correlation
             print(f'WordSim-{x} Score:{corr_coef}')
             file.close()
 
@@ -315,11 +327,16 @@ class SenseVectorExperiment(object):
             self.model.backpack.sense_vector_layer.forward = old_sense_vector_layer_forward
         return total_diff / len(prompts)
 
-    def debiasing_test_on_generate_target_words_gpt2(self, prompts, to_modify_word, bias_words):
+    def debiasing_test_on_generate_target_words_gpt2(
+            self, prompts, to_modify_word, bias_words, model_name=None, from_huggingface=False
+    ):
         """
         some prompts
         """
-        model = GPT2LMHeadModel.from_pretrained('uer/gpt2-chinese-cluecorpussmall')
+        if from_huggingface:
+            model = GPT2LMHeadModel.from_pretrained(model_name or 'uer/gpt2-chinese-cluecorpussmall')
+        else:
+            model = load_model(GPT, model_name or 'clue_small_gpt2')[0]
         model.eval()
         assert len(bias_words) == 2
         bias_indices = self.encode(bias_words)[1: -1]
@@ -355,20 +372,68 @@ class SenseVectorExperiment(object):
         weight = self.model.backpack.contextualization_layer.contextualization_weight_func(start_words)
         return weight[0, :, -1, :].T
 
+    def average_contextualization_weight_test(self, words):
+        t_ten, t_twe, t_other = 0, 0, 0
+        rtn = {'words': []}
+        for word in words:
+            print(word)
+            word_composition = self.word_composition(word, [
+                f'{word}',
+                f'"{word}"的意思是',
+                f'老师曾教育，{word}'
+                f'关于{word}，',
+                f'电视里说，{word}',
+                f'{word}是',
+                f'我觉得{word}',
+            ])
+            base = sum([torch.sum(compos, dim=1) / compos.shape[1] for compos in word_composition.values()]) / len(
+                word_composition)
+            ten, twe, other = 0, 0, 0
+            for key, compos in word_composition.items():
+                avg_differences = torch.sum(torch.abs(compos - base[:, None, :]), dim=1) / compos.shape[1]
+                for i, v in enumerate(avg_differences[:, 0]):
+                    if v < 0.1:
+                        ten += 1
+                        t_ten += 1
+                    elif v < 0.2:
+                        twe += 1
+                        t_twe += 1
+                    else:
+                        other += 1
+                        t_other += 1
+                break
+            rtn['words'].append({'word': word, 'ten': ten, "twe": twe, "other": other})
+        rtn['total'] = {'ten': t_ten, "twe": t_twe, "other": t_other}
+        return rtn
+
+    def average_contextualization_weight_test_on_groups(self):
+        compound_words = [w['word'] for w in json.load(open('data/word_compose/compound_words.json'))]
+        loanwords = [w['word'] for w in json.load(open('data/word_compose/loanwords.json'))]
+        idioms = [w['word'] for w in json.load(open('data/word_compose/idioms.json'))]
+        return {
+            'compound_words': self.average_contextualization_weight_test(compound_words),
+            'loanwords': self.average_contextualization_weight_test(loanwords),
+            'idioms': self.average_contextualization_weight_test(idioms)
+        }
+
 
 if __name__ == '__main__':
     ex = SenseVectorExperiment()
-    words = ['a', 'e', 'c', 's', 't']
-    for word in words:
-        print(ex.sense_projection(word))
+    # words = ['天', '沙', '进', '自']
+    # for word in words:
+    #     print(ex.sense_projection(word)[9])
+    #     print(ex.sense_projection(word)[11])
+    #     print(ex.sense_projection(word)[14])
+    #     print(ex.sense_projection(word)[5])
+
     # words = ['兵', '警', '师', '牧', '护']
     # for word in words:
     #     print(word)
     #     he, her = ex.bias_check_on_sense_vector(word, ['他', '她'])
     #     # max_diff = torch.argmax(torch.abs(he - her))
     #     print(torch.topk((torch.abs(he - her)), k=3))
-    # characters = ['士兵', '伞兵', '警察',  '交警', '清洁工', '教师']
-    # combined_words = ['士兵', '伞兵', '警察',  '交警', '清洁工', '教师']
+    # characters = ['兵', '警', '演', '教']
+    # combined_words = ['士兵', '警察', '演员', '教师']
     # prompts = [
     #     '那个%s说，',
     #     '这个%s相信',
@@ -376,10 +441,9 @@ if __name__ == '__main__':
     #     '%s坐在车里，然后',
     #     '%s走了过来，',
     # ]
-    #
+    # #
     # for word, combined_word in zip(characters, combined_words):
     #     print(word)
-    #     i = 3
     #     # for i in range(64):
     #     # # print(f'sense {i}')
     #     #     print(ex.debiasing_test_on_generate_target_words(
@@ -387,57 +451,38 @@ if __name__ == '__main__':
     #     #     ) - ex.debiasing_test_on_generate_target_words(
     #     #         [p % combined_word for p in prompts], word, ['他', '她'], i, 0
     #     #     ))
-    #     # print(ex.debiasing_test_on_generate_target_words_gpt2(
-    #     #     [p % combined_word for p in prompts], word, ['他', '她']
-    #     # ))
-    #     # print(ex.debiasing_test_on_generate_target_words_gpt2(
-    #     #     [p % combined_word for p in prompts], None, ['他', '她']
-    #     # ))
+    #     print(ex.debiasing_test_on_generate_target_words_gpt2(
+    #         [p % combined_word for p in prompts], word, ['他', '她']
+    #     ))
+    #     print(ex.debiasing_test_on_generate_target_words_gpt2(
+    #           [p % combined_word for p in prompts], None, ['他', '她']
+    #       ))
+    #     i = 14
+    #     # for i in range(16):
     #     for r in [1, 0.5, 0]:
     #         print(r, ex.debiasing_test_on_generate_target_words(
     #             [p % combined_word for p in prompts], word, ['他', '她'], i, r
     #         ))
-            # print()
-    # print(ex.alpha_modification_generation('在这人间里，充满了', 20, None))
-    # print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [4, 1]))
-    # print(ex.amplified_generation_test('在这人间里，充满了，', 20, '人间', [1, 4]))
+    # print(ex.alpha_modification_generation('这片沙滩非常好看，', 20, None, k=3))
+    # print(ex.amplified_generation_test('这片沙滩非常好看，', 20, '沙滩', [8, 1], k=3))
+    # print(ex.amplified_generation_test('这片沙滩非常好看，', 20, '沙滩', [1, 8], k=3))
+    print(ex.alpha_modification_generation('在这人间里，', 20, None, k=3))
+    print(ex.amplified_generation_test('在这人间里，', 20, '人间', [4, 1], k=3))
+    print(ex.amplified_generation_test('在这人间里，', 20, '人间', [1, 4], k=3))
     # test_words = ['丘', '撒', '堡', '粒', '石', '海', '人', '球', '晒']
     # regular = ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [1, 1])
     #
     # print(ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [4, 1]) / regular)
     # print(ex.amplified_generation_evaluation('沙滩上有不少', '沙滩', test_words, [1, 4]) / regular)
-
+    # print(ex.word_sense('天气'))
+    # print(ex.word_sense('天气', strategy='contextualized'))
+    # print('avg')
     # ex.chinese_word_sim_240_297_test()
-    # ex.chinese_word_sim_240_297_test_on_gpt2()
+    # print('\ncontextualized')
+    # ex.chinese_word_sim_240_297_test(strategy='contextualized')
+    # ex.chinese_word_sim_240_297_test_on_gpt2('clue_small_gpt2')
     # words = ['新闻', '沙发', '齐天大圣']
-    # for word in words:
-    #     print(word)
-    #     word_composition = ex.word_composition(word, [
-    #         f'{word}',
-    #         f'有很多{word}将要',
-    #         f'{word}被'
-    #         f'每天都有很多{word}',
-    #         f'电视里经常能看到{word}',
-    #         f'不管你喜不喜欢，{word}还是那么',
-    #         f'有哪位同学解释一下{word}是什么意思'
-    #     ])
-    #     # # reduce(operator.add, (torch.sum(compos, dim=1) / compos.shape[1] for compos in word_composition.values())) / len(
-    #     #     # word_composition)
-    #     base = sum([torch.sum(compos, dim=1) / compos.shape[1] for compos in word_composition.values()]) / len(word_composition)
-    #     ten, twe, other = 0, 0, 0
-    #     for key, compos in word_composition.items():
-    #         # print(key)
-    #         # print(ex.decode(ex.next_topk_words(key, 5).indices.detach().numpy()))
-    #         avg_differences = torch.sum(torch.abs(compos - base[:, None, :]), dim=1) / compos.shape[1]
-    #         for i, v in enumerate(avg_differences[:, 0]):
-    #             if v < 0.1:
-    #                 ten += 1
-    #             elif v < 0.2:
-    #                 twe += 1
-    #             else:
-    #                 other += 1
-    #         break
-    #     print(ten, twe, other)
+    # print(ex.average_contextualization_weight_test_on_groups())
 
     # words = ['天', '地', '沙', '哲', '政治', '既然', '合理性', '网络故', '画蛇添', '政治因']
     # words = ['网络故', '突发网络故', '有一段网络故']

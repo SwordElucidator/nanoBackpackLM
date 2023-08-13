@@ -158,3 +158,4 @@ wandb/*
 */*/*.bin
 */*/*.txt
 */*/*.json
+!data/word_compose/*.json

@@ -28,6 +28,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from backpack import BackpackLM, BackpackLMConfig
+from knapsack import KnapsackLMConfig, KnapsackLM
 from model import GPTConfig, GPT
 from task_utils import HUGGINGFACE_TOKENIZERS, get_batch_function_for_multilingual_training
 
@@ -163,10 +164,10 @@ if os.path.exists(meta_path):
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout)  # start with model_args from command line
-Model = BackpackLM if model_name == 'backpack-lm' else GPT
-Config = BackpackLMConfig if model_name == 'backpack-lm' else GPTConfig
+Model = BackpackLM if model_name == 'backpack-lm' else KnapsackLM if model_name == 'knapsack-lm' else GPT
+Config = BackpackLMConfig if model_name == 'backpack-lm' else KnapsackLMConfig if model_name == 'knapsack-lm' else GPTConfig
 
-if model_name == 'backpack-lm':
+if model_name in ['backpack-lm', 'knapsack-lm']:
     model_args['n_sense_vector'] = n_sense_vector
 
 if init_from == 'scratch':
@@ -198,7 +199,7 @@ elif init_from == 'resume':
     # the rest of the attributes (e.g. dropout) can stay as desired from command line
     for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
         model_args[k] = checkpoint_model_args[k]
-    if model_name == 'backpack-lm':
+    if model_name in ['backpack-lm', 'knapsack-lm']:
         model_args['n_sense_vector'] = checkpoint_model_args['n_sense_vector']
     # create the model
     gptconf = Config(**model_args)

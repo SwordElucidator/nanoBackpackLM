@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import tiktoken
 from backpack import BackpackLM, BackpackLMConfig
+from knapsack import KnapsackLMConfig, KnapsackLM
 from model import GPT, GPTConfig
 from task_utils import HUGGINGFACE_TOKENIZERS
 
@@ -32,8 +33,8 @@ exec(open('configurator.py').read())  # overrides from command line or config fi
 # -----------------------------------------------------------------------------
 
 device_type = 'cuda' if 'cuda' in device else 'cpu'
-Model = BackpackLM if model_name == 'backpack-lm' else GPT
-Config = BackpackLMConfig if model_name == 'backpack-lm' else GPTConfig
+Model = BackpackLM if model_name == 'backpack-lm' else KnapsackLM if model_name == 'knapsack-lm' else GPT
+Config = BackpackLMConfig if model_name == 'backpack-lm' else KnapsackLMConfig if model_name == 'knapsack-lm' else GPTConfig
 
 def load_model(force_model=None, force_dir=None):
     torch.manual_seed(seed)
